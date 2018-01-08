@@ -9,6 +9,7 @@ set(LIBKVSNS_EXTRA_VERSION "")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${CMAKE_SOURCE_DIR}/include -fPIC -g")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/") 
 
 set(LIBKVSNS_BASE_VERSION ${LIBKVSNS_MAJOR_VERSION}.${LIBKVSNS_MINOR_VERSION}.${LIBKVSNS_PATCH_LEVEL})
 
@@ -21,6 +22,7 @@ option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" ON)
 option(USE_POSIX_STORE "Use POSIX directory as object store" ON)
 option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
 option(USE_RADOS "Use Ceph/RADOS via librados" OFF)
+option(USE_S3 "Use S3 via libs3" OFF)
 
 if(USE_FSAL_LUSTRE)
     set(BCOND_LUSTRE "%bcond_without")
@@ -53,16 +55,23 @@ else (USE_RADOS)
 	set(BCOND_RADOS "%bcond_with")
 endif (USE_RADOS)
 
+if (USE_S3)
+	set(BCOND_S3 "%bcond_without")
+else (USE_S3)
+	set(BCOND_S3 "%bcond_with")
+endif (USE_S3)
+
 # Final tuning
-if (USE_POSIX_OBJ OR USE_RADOS)
+if (USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
   set(USE_POSIX_STORE OFF)
   message(STATUS "Disabling POSIX Store")
-endif(USE_POSIX_OBJ OR USE_RADOS)
+endif(USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
 
 message(STATUS "USE_KVS_REDIS=${USE_KVS_REDIS}")
 message(STATUS "USE_POSIX_STORE=${USE_POSIX_STORE}")
 message(STATUS "USE_POSIX_OBJ=${USE_POSIX_OBJ}")
 message(STATUS "USE_RADOS=${USE_RADOS}")
+message(STATUS "USE_S3=${USE_S3}")
 
 
 include(CheckIncludeFiles)
