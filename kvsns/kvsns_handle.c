@@ -486,6 +486,11 @@ int kvsns_unlink(kvsns_cred_t *cred, kvsns_ino_t *dir, char *name)
 		snprintf(k, KLEN, "%llu.stat", ino);
 		RC_WRAP_LABEL(rc, aborted, kvsal_del, k);
 
+#ifdef KVSNS_S3
+		snprintf(k, KLEN, "%llu.name", ino);
+		RC_WRAP_LABEL(rc, aborted, kvsal_del, k);
+#endif
+
 		if (opened) {
 			/* File is opened, deleted it at last close */
 			snprintf(k, KLEN, "%llu.opened_and_deleted", ino);
@@ -596,6 +601,12 @@ int kvsns_rename(kvsns_cred_t *cred,  kvsns_ino_t *sino,
 		 *dino, dname);
 	snprintf(v, VLEN, "%llu", ino);
 	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+#ifdef KVSNS_S3
+	snprintf(k, KLEN, "%llu.name", ino);
+	snprintf(v, VLEN, "%s", dname);
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+#endif
 
 	snprintf(k, KLEN, "%llu.parentdir", ino);
 	RC_WRAP_LABEL(rc, aborted, kvsns_parentlist2str, parent, size, v);

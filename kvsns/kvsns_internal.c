@@ -176,6 +176,13 @@ int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 
 	RC_WRAP(kvsal_begin_transaction);
 
+#ifdef KVSNS_S3
+	snprintf(k, KLEN, "%llu.name", *new_entry);
+	snprintf(v, VLEN, "%s", name);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+#endif
+
 	snprintf(k, KLEN, "%llu.dentries.%s",
 		 *parent, name);
 	snprintf(v, VLEN, "%llu", *new_entry);

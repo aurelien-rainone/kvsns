@@ -49,6 +49,8 @@
 #include <sys/param.h>
 #include <sys/xattr.h>
 
+#define KVSNS_S3			/* Use S3 KVS layout */
+
 #include <kvsns/kvsal.h>
 
 #define KVSNS_ROOT_INODE 2LL
