@@ -10,3 +10,7 @@ if(USE_RADOS)
 	add_subdirectory(rados)
 endif(USE_RADOS)
 
+if(USE_S3)
+	add_subdirectory(s3)
+endif(USE_S3)
+
