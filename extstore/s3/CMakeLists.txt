@@ -1,6 +1,7 @@
 
 SET(extstore_LIB_SRCS
    extstore.c
+   internal.c
 )
 
 # require LIBS3 w/API version 1.x
