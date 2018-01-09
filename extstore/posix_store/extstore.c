@@ -103,6 +103,11 @@ int extstore_init(struct collection_item *cfg_items)
 	return 0;
 }
 
+int extstore_fini()
+{
+	return 0;
+}
+
 int extstore_del(kvsns_ino_t *ino)
 {
 	char storepath[MAXPATHLEN];

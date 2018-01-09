@@ -70,6 +70,7 @@ int kvsns_start(const char *configpath)
 int kvsns_stop(void)
 {
 	RC_WRAP(kvsal_fini);
+	RC_WRAP(extstore_fini);
 	free_ini_config_errors(cfg_items);
 	return 0;
 }
