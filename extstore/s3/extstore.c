@@ -81,6 +81,7 @@ int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 int extstore_init(struct collection_item *cfg_items)
 {
 	struct collection_item *item;
+	S3Status s3rc;
 	int rc;
 
 	printf("%s\n", __func__);
@@ -142,7 +143,12 @@ int extstore_init(struct collection_item *cfg_items)
 	bucket_ctx.accessKeyId = access_key;
 	bucket_ctx.secretAccessKey = secret_key;
 
-
+	/* Initialize libs3 */
+	if ((s3rc = S3_initialize("kvsns", S3_INIT_ALL, host)
+				  != S3StatusOK)) {
+		/* TODO: add libs32fsal_error function */
+		rc = 1;
+	}
 #if 0
 	/* Verify credentials */
 	rc = rados_create2(&cluster, clustername, user, 0LL);
@@ -158,6 +164,15 @@ int extstore_init(struct collection_item *cfg_items)
 	if (rc < 0)
 		return rc;
 #endif
+	return 0;
+}
+
+int extstore_fini()
+{
+	printf("%s\n", __func__);
+
+	/* release libs3 */
+	S3_deinitialize();
 	return 0;
 }
 
