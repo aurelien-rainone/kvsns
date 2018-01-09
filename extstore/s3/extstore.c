@@ -33,7 +33,8 @@
 #include <kvsns/extstore.h>
 #include <kvsns/kvsal.h>
 #include <hiredis/hiredis.h>
-#include <libs3.h>
+#include "internal.h"
+#include "s3_methods.h"
 
 #define RC_WRAP(__function, ...) ({\
 	int __rc = __function(__VA_ARGS__);\
@@ -49,12 +50,22 @@
 #define S3_MAX_ACCESS_KEY_ID_SIZE 256		/* not sure about this */
 #define S3_MAX_SECRET_ACCESS_KEY_ID_SIZE 256	/* not sure about this */
 
+/* Default values for S3 requests configuration */
+#define S3_REQ_DEFAULT_RETRIES 3
+#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1
+#define S3_REQ_DEFAULT_TIMEOUT 10000
+
 
 static S3BucketContext bucket_ctx;
 static char host[S3_MAX_HOSTNAME_SIZE];
 static char bucket[S3_MAX_BUCKET_NAME_SIZE];
 static char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
 static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
+
+/* 
+ * S3 request configuration, may be overriden for specific requests
+ */
+extstore_s3_req_cfg_t s3_req_cfg;
 
 int extstore_create(kvsns_ino_t object)
 {
@@ -142,28 +153,29 @@ int extstore_init(struct collection_item *cfg_items)
 	bucket_ctx.bucketName = bucket;
 	bucket_ctx.accessKeyId = access_key;
 	bucket_ctx.secretAccessKey = secret_key;
+	bucket_ctx.authRegion = NULL;
+	bucket_ctx.protocol = S3ProtocolHTTP;
+	bucket_ctx.uriStyle = S3UriStylePath;
 
 	/* Initialize libs3 */
 	if ((s3rc = S3_initialize("kvsns", S3_INIT_ALL, host)
 				  != S3StatusOK)) {
-		/* TODO: add libs32fsal_error function */
-		rc = 1;
+		return s3status2posix_error(s3rc);
 	}
-#if 0
-	/* Verify credentials */
-	rc = rados_create2(&cluster, clustername, user, 0LL);
-	if (rc < 0)
-		return rc;
 
-	rc = rados_conf_read_file(cluster, ceph_conf);
-	if (rc < 0)
-		return rc;
+	/* Initialize S3 request config */
+	memset(&s3_req_cfg, 0, sizeof(extstore_s3_req_cfg_t));
+	s3_req_cfg.retries = S3_REQ_DEFAULT_RETRIES;
+	s3_req_cfg.sleep_interval = S3_REQ_DEFAULT_SLEEP_INTERVAL;
+	s3_req_cfg.timeout = S3_REQ_DEFAULT_TIMEOUT;
+	s3_req_cfg.log_props = 1;
 
-	/* Connect to the cluster */
-	rc = rados_connect(cluster);
-	if (rc < 0)
-		return rc;
-#endif
+	/* TODO: Add S3_WRAP macro that wraps S3Status check and converts
+	 * error code to posix if necessary */
+	if ((s3rc = test_bucket(&bucket_ctx, &s3_req_cfg)) != S3StatusOK) {
+		return s3status2posix_error(s3rc);
+	}
+
 	return 0;
 }
 

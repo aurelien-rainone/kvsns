@@ -25,37 +25,23 @@
  * -------------
  */
 
-/* internal.h
- * KVSNS: S3 extstore internal declarations.
+/* s3_methods.h
+ * KVSNS: S3 specific declarations.
  */
 
-#ifndef _S3_EXTSTORE_INTERNAL_H
-#define _S3_EXTSTORE_INTERNAL_H
+#ifndef _S3_EXTSTORE_S3_METHODS_H
+#define _S3_EXTSTORE_S3_METHODS_H
 
-#include <errno.h>
 #include <libs3.h>
-
-
-/* S3 request configuration */
-typedef struct extstore_s3_req_cfg_ {
-	int retries;	    /* max retries for failed S3 requests */
-	int sleep_interval; /* sleep interval between successive retries (s) */
-	int timeout;	    /* request timeout (ms) */
-	int log_props;	    /* [DBG] log response properties */
-} extstore_s3_req_cfg_t;
-
+#include "internal.h"
 
 /**
- * @brief posix error code from libS3 status error
+ * Test bucket existence/access.
  *
- * This function returns a posix errno equivalent from an libs3 S3Status.
+ * @param ctx - libs3 bucket context.
  *
- * @param[in] s3_errorcode libs3 error
- *
- * @return posix errno.
+ * @return S3StatusOK if successful.
  */
-
-int s3status2posix_error(const S3Status s3_errorcode);
-
+S3Status test_bucket(const S3BucketContext *ctx, extstore_s3_req_cfg_t *req_cfg);
 
 #endif

@@ -1,6 +1,7 @@
 
 SET(extstore_LIB_SRCS
    extstore.c
+   s3_methods.c
    internal.c
 )
 
