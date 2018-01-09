@@ -45,6 +45,7 @@
 #include <kvsns/kvsns.h>
 
 int extstore_init(struct collection_item *cfg_items);
+int extstore_fini();
 int extstore_create(kvsns_ino_t object);
 int extstore_read(kvsns_ino_t *ino,
 		  off_t offset,

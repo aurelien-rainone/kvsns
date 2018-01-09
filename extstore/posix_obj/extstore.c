@@ -332,6 +332,12 @@ int extstore_init(struct collection_item *cfg_items)
 	return 0;
 }
 
+int extstore_fini()
+{
+	/* nothing to do here */
+	return 0;
+}
+
 int extstore_del(kvsns_ino_t *ino)
 {
 	char k[KLEN];
