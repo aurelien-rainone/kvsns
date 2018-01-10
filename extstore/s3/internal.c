@@ -29,6 +29,8 @@
  * KVSNS: S3 extstore internal definitions.
  */
 
+#include <stdlib.h>
+#include <string.h>
 #include "internal.h"
 
 
@@ -291,4 +293,79 @@ int s3status2posix_error(const S3Status s3_errorcode)
 
 	}
 	return rc;
+}
+
+int growbuffer_append(growbuffer_t **gb, const char *data, int data_len)
+{
+	int toCopy = 0 ;
+	while (data_len) {
+		growbuffer_t *buf = *gb ? (*gb)->prev : 0;
+		if (!buf || (buf->size == sizeof(buf->data))) {
+			buf = (growbuffer_t *) malloc(sizeof(growbuffer_t));
+			if (!buf) {
+				// TODO: should return NOMEM here and 0 on success!!!
+				return 0;
+			}
+			buf->size = 0;
+			buf->start = 0;
+			if (*gb && (*gb)->prev) {
+				buf->prev = (*gb)->prev;
+				buf->next = *gb;
+				(*gb)->prev->next = buf;
+				(*gb)->prev = buf;
+			} else {
+				buf->prev = buf->next = buf;
+				*gb = buf;
+			}
+		}
+
+		toCopy = (sizeof(buf->data) - buf->size);
+		if (toCopy > data_len)
+			toCopy = data_len;
+
+		memcpy(&(buf->data[buf->size]), data, toCopy);
+
+		buf->size += toCopy, data += toCopy, data_len -= toCopy;
+	}
+
+	return toCopy;
+}
+
+void growbuffer_read(growbuffer_t **gb, int amt, int *amt_ret,
+		     char *buffer)
+{
+	*amt_ret = 0;
+
+	growbuffer_t *buf = *gb;
+
+	if (!buf)
+		return;
+
+	*amt_ret = (buf->size > amt) ? amt : buf->size;
+
+	memcpy(buffer, &(buf->data[buf->start]), *amt_ret);
+
+	buf->start += *amt_ret, buf->size -= *amt_ret;
+
+	if (buf->size == 0) {
+		if (buf->next == buf)
+			*gb = 0;
+		else {
+			*gb = buf->next;
+			buf->prev->next = buf->next;
+			buf->next->prev = buf->prev;
+		}
+		free(buf);
+	}
+}
+
+void growbuffer_destroy(growbuffer_t *gb)
+{
+	growbuffer_t *start = gb;
+
+	while (gb) {
+		growbuffer_t *next = gb->next;
+		free(gb);
+		gb = (next == start) ? 0 : next;
+	}
 }
