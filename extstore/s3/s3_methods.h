@@ -39,9 +39,11 @@
  * Test bucket existence/access.
  *
  * @param ctx - libs3 bucket context.
+ * @param req_cfg - config for this request.
  *
  * @return S3StatusOK if successful.
  */
-S3Status test_bucket(const S3BucketContext *ctx, extstore_s3_req_cfg_t *req_cfg);
+S3Status test_bucket(const S3BucketContext *ctx,
+		     extstore_s3_req_cfg_t *req_cfg);
 
 #endif
