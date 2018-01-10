@@ -75,5 +75,23 @@ typedef struct extstore_s3_req_cfg_ {
  */
 int s3status2posix_error(const S3Status s3_errorcode);
 
+typedef struct growbuffer_ {
+	int size;			/* total number of bytes */
+	int start;			/* start byte */
+	char data[64 * 1024];		/* blocks */
+	struct growbuffer_ *prev;
+	struct growbuffer_ *next;
+} growbuffer_t;
+
+/**
+ * @brief returns nonzero on success, zero on out of memory
+ *
+ * @param[in] s3_errorcode libs3 error
+ *
+ * @return 0 on success
+ */
+int growbuffer_append(growbuffer_t **gb, const char *data, int data_len);
+void growbuffer_read(growbuffer_t **gb, int amt, int *amt_ret, char *buffer);
+void growbuffer_destroy(growbuffer_t *gb);
 
 #endif
