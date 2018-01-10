@@ -36,7 +36,7 @@
 #include "internal.h"
 
 struct s3_resp_cb_data {
-	/*< request status */
+	/*< [OUT] request status */
 	int status;
 };
 
@@ -46,7 +46,7 @@ struct s3_resp_cb_data {
  */
 static const int showResponsePropertiesG = 1;
 
-static int should_retry(S3Status st, int retries, int interval)
+int should_retry(S3Status st, int retries, int interval)
 {
 	if (S3_status_is_retryable(st) && retries--) {
 		/* Sleep before next retry; start out with a 1 second sleep*/
@@ -101,8 +101,8 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
  * This callbacks saves the status and prints extra informations.
  */
 void resp_complete_cb(S3Status status,
-			 const S3ErrorDetails *error,
-			 void *cb_data)
+		      const S3ErrorDetails *error,
+		      void *cb_data)
 {
 	int i;
 	struct s3_resp_cb_data *s3cbdata;
