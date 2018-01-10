@@ -65,36 +65,35 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
 	struct s3_resp_cb_data *cb_data;
 	cb_data = (struct s3_resp_cb_data*) (cb_data_);
 
-		return S3StatusOK;
-	}
-	if (!cb_data->config->log_props) {
+	if (cb_data->config->log_props) {
 
 #define PRINT_PROP(name, field) ({\
-	if (props->field) printf("%s: %s\n", name, props->field); })
+		if (props->field) printf("%s: %s\n", name, props->field); })
 
-	PRINT_PROP("Content-Type", contentType);
-	PRINT_PROP("Request-Id", requestId);
-	PRINT_PROP("Request-Id-2", requestId2);
-	if (props->contentLength > 0) {
-		printf("Content-Length: %llu\n",
-		       (unsigned long long) props->contentLength);
-	}
-	PRINT_PROP("Server", server);
-	PRINT_PROP("ETag", eTag);
-	if (props->lastModified > 0) {
-		char timebuf[256];
-		time_t t = (time_t) props->lastModified;
-		// gmtime is not thread-safe but we don't care here.
-		strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ", gmtime(&t));
-		printf("Last-Modified: %s\n", timebuf);
-	}
-	int i;
-	for (i = 0; i < props->metaDataCount; i++) {
-		printf("x-amz-meta-%s: %s\n", props->metaData[i].name,
-		       props->metaData[i].value);
-	}
-	if (props->usesServerSideEncryption) {
-		printf("UsesServerSideEncryption: true\n");
+		PRINT_PROP("Content-Type", contentType);
+		PRINT_PROP("Request-Id", requestId);
+		PRINT_PROP("Request-Id-2", requestId2);
+		if (props->contentLength > 0)
+			printf("Content-Length: %llu\n",
+			       (unsigned long long) props->contentLength);
+		PRINT_PROP("Server", server);
+		PRINT_PROP("ETag", eTag);
+		if (props->lastModified > 0) {
+			char timebuf[256];
+			time_t t = (time_t) props->lastModified;
+			/* gmtime is not thread-safe but we don't care here. */
+			strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
+				 gmtime(&t));
+			printf("Last-Modified: %s\n", timebuf);
+		}
+		int i;
+		for (i = 0; i < props->metaDataCount; i++) {
+			printf("x-amz-meta-%s: %s\n",
+			       props->metaData[i].name,
+			       props->metaData[i].value);
+		}
+		if (props->usesServerSideEncryption)
+			printf("UsesServerSideEncryption: true\n");
 	}
 
 	return S3StatusOK;
@@ -105,12 +104,14 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
  */
 void resp_complete_cb(S3Status status,
 		      const S3ErrorDetails *error,
-		      void *cb_data)
+		      void *cb_data_)
 {
 	int i;
-	struct s3_resp_cb_data *s3cbdata;
-	s3cbdata = (struct s3_resp_cb_data*) (cb_data);
-	s3cbdata->status = status;
+	struct s3_resp_cb_data *cb_data;
+	cb_data = (struct s3_resp_cb_data*) (cb_data_);
+
+	/* set status */
+	cb_data->status = status;
 
 	if (status == S3StatusOK)
 		printf("%s Successful request, res=%s",
