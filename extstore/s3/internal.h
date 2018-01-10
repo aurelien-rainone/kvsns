@@ -54,7 +54,6 @@ typedef struct extstore_s3_req_cfg_ {
  *
  * @return posix errno.
  */
-
 int s3status2posix_error(const S3Status s3_errorcode);
 
 
