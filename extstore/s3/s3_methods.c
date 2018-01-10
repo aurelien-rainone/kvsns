@@ -43,11 +43,6 @@ struct s3_resp_cb_data {
 };
 
 
-/* TODO: remove this global and use the log_props boolean field
- *       of extstore_s3_req_cfg_t instead
- */
-static const int showResponsePropertiesG = 1;
-
 int should_retry(S3Status st, int retries, int interval)
 {
 	if (S3_status_is_retryable(st) && retries--) {
@@ -57,7 +52,6 @@ int should_retry(S3Status st, int retries, int interval)
 	}
 	return 0;
 }
-
 
 S3Status resp_props_cb(const S3ResponseProperties *props,
 		       void *cb_data_)
@@ -133,22 +127,20 @@ void resp_complete_cb(S3Status status,
 	}
 }
 
-S3Status test_bucket(const S3BucketContext *ctx, extstore_s3_req_cfg_t *req_cfg)
+S3Status test_bucket(const S3BucketContext *ctx,
+		     extstore_s3_req_cfg_t *req_cfg)
 {
-	int retries;
-	int interval;
 	char location[64];
 	struct s3_resp_cb_data cb_data = { S3StatusOK, req_cfg };
+	int retries = req_cfg->retries;
+	int interval = req_cfg->sleep_interval;
 
 	S3ResponseHandler resp_handler = {
-		&resp_props_cb, &resp_complete_cb
+		&resp_props_cb,
+		&resp_complete_cb
 	};
 
 	printf("%s bkt=%s\n", __func__, ctx->bucketName);
-
-	/* Setup retry variables */
-	retries = req_cfg->retries;
-	interval = req_cfg->sleep_interval;
 
 	do {
 		S3_test_bucket(ctx->protocol,
