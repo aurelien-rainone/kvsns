@@ -38,6 +38,8 @@
 struct s3_resp_cb_data {
 	/*< [OUT] request status */
 	int status;
+	/*< [IN] request configuration */
+	const extstore_s3_req_cfg_t *config;
 };
 
 
@@ -58,13 +60,14 @@ int should_retry(S3Status st, int retries, int interval)
 
 
 S3Status resp_props_cb(const S3ResponseProperties *props,
-		       void *cb_data)
+		       void *cb_data_)
 {
-	(void) cb_data;
+	struct s3_resp_cb_data *cb_data;
+	cb_data = (struct s3_resp_cb_data*) (cb_data_);
 
-	if (!showResponsePropertiesG) {
 		return S3StatusOK;
 	}
+	if (!cb_data->config->log_props) {
 
 #define PRINT_PROP(name, field) ({\
 	if (props->field) printf("%s: %s\n", name, props->field); })
@@ -134,7 +137,8 @@ S3Status test_bucket(const S3BucketContext *ctx, extstore_s3_req_cfg_t *req_cfg)
 	int retries;
 	int interval;
 	char location[64];
-	struct s3_resp_cb_data cb_data;
+	struct s3_resp_cb_data cb_data = { S3StatusOK, req_cfg };
+
 	S3ResponseHandler resp_handler = {
 		&resp_props_cb, &resp_complete_cb
 	};
