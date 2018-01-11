@@ -55,6 +55,11 @@ struct s3_resp_cb_data {
 	int status;
 	/*< [IN] request configuration */
 	const extstore_s3_req_cfg_t *config;
+
+	/*< [IN] should callback set stats? */
+	int should_set_stats;
+	time_t mtime;	/*< [OUT mtime to be by callback */
+	uint64_t size;	/*< [OUT] size to be by callback */
 };
 
 static char errorDetailsG[4096] = { 0 };
@@ -112,6 +117,16 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
 			printf("UsesServerSideEncryption: true\n");
 	}
 
+	if (cb_data->should_set_stats) {
+                cb_data->mtime = (time_t) props->lastModified;
+                cb_data->size = (uint64_t) props->contentLength;
+
+		printf("%s set_stats=1 mtime=%lu size=%lu\n",
+		       __func__,
+		       cb_data->mtime,
+		       cb_data->size);
+	}
+
 	return S3StatusOK;
 }
 
@@ -153,10 +168,16 @@ S3Status test_bucket(const S3BucketContext *ctx,
 		     extstore_s3_req_cfg_t *req_cfg)
 {
 	char location[64];
-	struct s3_resp_cb_data cb_data = { S3StatusOK, req_cfg };
+	struct s3_resp_cb_data cb_data;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
+	/* define callback data */
+	cb_data.status = S3StatusOK;
+	cb_data.config = req_cfg;
+	cb_data.should_set_stats = 0;
+
+	/* define callbacks */
 	S3ResponseHandler resp_handler = {
 		&resp_props_cb,
 		&resp_complete_cb
@@ -183,6 +204,7 @@ S3Status test_bucket(const S3BucketContext *ctx,
 		++interval;
 	} while (should_retry(cb_data.status, retries, interval));
 
+	/* TODO: log errors */
 	return cb_data.status;
 }
 
@@ -700,5 +722,36 @@ clean:
 	}
 
 	/* TODO: AR check if this is always the correct status*/
+	return cb_data.status;
+}
+
+S3Status stats_object(const S3BucketContext *ctx,
+		      const char *key,
+		      extstore_s3_req_cfg_t *req_cfg,
+		      time_t *mtime, uint64_t *size)
+{
+	struct s3_resp_cb_data cb_data;
+	int retries = req_cfg->retries;
+	int interval = req_cfg->sleep_interval;
+
+	/* define callback data */
+	cb_data.status = S3StatusOK;
+	cb_data.config = req_cfg;
+	cb_data.should_set_stats = 1;
+
+	/* define callbacks */
+	S3ResponseHandler resp_handler = {
+		&resp_props_cb,
+		&resp_complete_cb
+	};
+
+	do {
+		S3_head_object(ctx, key, 0, 0, &resp_handler, &cb_data);
+		/* Decrement retries and wait 1 second longer */
+		--retries;
+		++interval;
+	} while (should_retry(cb_data.status, retries, interval));
+
+	/* TODO: log errors */
 	return cb_data.status;
 }

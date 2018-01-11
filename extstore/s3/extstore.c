@@ -241,6 +241,32 @@ int extstore_truncate(kvsns_ino_t *ino,
 int extstore_getattr(kvsns_ino_t *ino,
 		     struct stat *stat)
 {
+	S3Status s3rc;
+	time_t mtime;
+	uint64_t size;
+	char fullpath[256];
 	printf("%s ino=%llu\n", __func__, *ino);
+
+	build_fullpath(*ino, fullpath);
+	ASSERT(fullpath[0] == '/');
+
+	/* perform HEAD on S3 object*/
+	/* TODO: what happens if the object doesn't exist?
+	 * if that's the case, the return value of stats_objects
+	 * should be ENOENT, we should treat that case specifically
+	 * and zero st_size, st_mtime and st_atime.
+	 * (@see `extstore_getattr` in rados).
+	 */
+	if ((s3rc = stats_object(&bucket_ctx, fullpath, &s3_req_cfg,
+			       &mtime, &size)
+			!= S3StatusOK)) {
+		/* TODO: log errors */
+		return s3status2posix_error(s3rc);
+	}
+
+	stat->st_size = size;
+	stat->st_mtime = mtime;
+	stat->st_atime = mtime;
+
 	return 0;
 }
