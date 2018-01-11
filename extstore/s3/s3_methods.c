@@ -130,19 +130,19 @@ void resp_complete_cb(S3Status status,
 	cb_data->status = status;
 
 	if (status == S3StatusOK)
-		printf("%s Successful request, res=%s",
+		printf("%s Successful request, res=%s\n",
 		       __func__, error->resource);
 	else if (error) {
 		if (error->message)
-			printf("%s Message: %s", __func__, error->message);
+			printf("%s Message: %s\n", __func__, error->message);
 		if (error->resource)
-			printf("%s Resource: %s", __func__, error->resource);
+			printf("%s Resource: %s\n", __func__, error->resource);
 		if (error->furtherDetails)
-			printf("%s Further details: %s",
+			printf("%s Further details: %s\n",
 			       __func__, error->furtherDetails);
 		if (error->extraDetailsCount)
 			for (i = 0; i < error->extraDetailsCount; i++)
-				printf("%s Extra details: %s->%s",
+				printf("%s Extra details: %s->%s\n",
 				       __func__,
 				       error->extraDetails[i].name,
 				       error->extraDetails[i].value);
@@ -559,7 +559,7 @@ S3Status put_object(const S3BucketContext *ctx, const char *key,
 			growbuffer_destroy(cb_data.gb);
 
 		if (cb_data.status != S3StatusOK) {
-			printf("%s status=%d err=%s", __func__,
+			printf("%s status=%d err=%s\n", __func__,
 			       cb_data.status, S3_get_status_name(cb_data.status));
 		} else if (cb_data.content_len) {
 			fprintf(stderr,
