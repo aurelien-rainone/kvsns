@@ -702,3 +702,31 @@ clean:
 	/* TODO: AR check if this is always the correct status*/
 	return cb_data.status;
 }
+
+S3Status delete_object(const S3BucketContext *ctx, const char *key,
+		       extstore_s3_req_cfg_t *req_cfg)
+{
+	struct s3_resp_cb_data cb_data = { S3StatusOK, req_cfg };
+	int retries = req_cfg->retries;
+	int interval = req_cfg->sleep_interval;
+
+	S3ResponseHandler resp_handler = {
+		&resp_props_cb,
+		&resp_complete_cb
+	};
+
+	do {
+		S3_delete_object(ctx,
+				 key,
+				 0,
+				 req_cfg->timeout,
+				 &resp_handler,
+				 &cb_data);
+
+		/* Decrement retries and wait 1 second longer */
+		--retries;
+		++interval;
+	} while (should_retry(cb_data.status, retries, interval));
+
+	return cb_data.status;
+}

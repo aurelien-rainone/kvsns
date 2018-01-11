@@ -184,7 +184,24 @@ int extstore_fini()
 
 int extstore_del(kvsns_ino_t *ino)
 {
+	int rc;
+	S3Status s3rc;
+	char fullpath[256];
 	printf("%s ino=%llu\n", __func__, *ino);
+
+	if ((rc = build_fullpath(*ino, fullpath)
+			!= 0)) {
+		printf("%s Error rc=%d\n", __func__, rc);
+		return rc;
+	}
+	ASSERT(fullpath[0] == '/');
+
+	/* perform DELETE */
+	if ((s3rc = delete_object(&bucket_ctx, fullpath, &s3_req_cfg)
+			!= S3StatusOK)) {
+		return s3status2posix_error(s3rc);
+	}
+
 	return 0;
 }
 

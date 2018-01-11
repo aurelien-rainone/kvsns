@@ -60,4 +60,17 @@ S3Status test_bucket(const S3BucketContext *ctx,
 S3Status put_object(const S3BucketContext *ctx, const char *key,
 		    extstore_s3_req_cfg_t *req_cfg,
 		    const char *buf, size_t buflen);
+
+/**
+ * Delete S3 object.
+ *
+ * @param ctx - libs3 bucket context.
+ * @param key - key to delete.
+ * @param req_cfg - config for this request.
+ *
+ * @return S3StatusOK if successful.
+ */
+S3Status delete_object(const S3BucketContext *ctx, const char *key,
+		       extstore_s3_req_cfg_t *req_cfg);
+
 #endif
