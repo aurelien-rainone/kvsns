@@ -132,21 +132,30 @@ static int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 	return 0;	
 }
 
+/**
+ * Build full path of S3 Object.
+ *
+ * @param object - object inode.
+ * @param obj_path - [OUT] full S3 path, ends with slash for directories.
+ *
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_fullpath(kvsns_ino_t object, char *obj_path)
+{
+	char fname[VLEN];
+	RC_WRAP(build_objpath, object, obj_path, fname);
+	strcat(obj_path, fname);
+	return 0;
+}
+
 int extstore_create(kvsns_ino_t object)
 {
 	S3Status s3rc;
 
 	printf("%s obj=%llu\n", __func__, object);
-
-	char fname[256];
-	char dir[256];
 	char fullpath[256];
 
-	build_objpath(object, dir, fname);
-
-	ASSERT(strlen(fname));
-	strncpy(fullpath, dir, 256);
-	strncat(fullpath, fname, 256);
+	build_fullpath(object, fullpath);
 
 	/* perform PUT */
 	if ((s3rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0)
