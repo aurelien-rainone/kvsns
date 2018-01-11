@@ -47,7 +47,7 @@ S3Status test_bucket(const S3BucketContext *ctx,
 		     extstore_s3_req_cfg_t *req_cfg);
 
 /**
- * PUT request.
+ * Send object to S3.
  *
  * @param ctx - libs3 bucket context.
  * @param key - key to create/replace/modify.
@@ -56,7 +56,8 @@ S3Status test_bucket(const S3BucketContext *ctx,
  * @param buflen - length of buf (0 means an empty S3 object).
  *
  * @return S3StatusOK if successful.
- */S3Status put_object(const S3BucketContext *ctx, const char *key,
+ */
+S3Status put_object(const S3BucketContext *ctx, const char *key,
 		    extstore_s3_req_cfg_t *req_cfg,
 		    const char *buf, size_t buflen);
 #endif
