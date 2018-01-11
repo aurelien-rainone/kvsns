@@ -80,10 +80,10 @@ void prepend(char* s, const char* t)
 }
 
 /**
- * Build full path of S3 Object.
+ * Build path of S3 Object and return object directory and filename.
  *
  * @param object - object inode.
- * @param obj_dir - [OUT] full S3 directory path, without trailing path.
+ * @param obj_dir - [OUT] full S3 directory path, with trailing slash.
  * @param obj_fname - [OUT] S3 object filename, empty for a directory.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure

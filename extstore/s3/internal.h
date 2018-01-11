@@ -47,13 +47,11 @@
 	#define ASSERT_FAIL(ex, fi, l, fu) ((void)0)
 #endif
 
-
 #if DEBUG
 	#define ASSERT(expr) do { if(!(expr)) ASSERT_FAIL(#expr, __FILE__, __LINE__, __func__); } while(0)
 #else
 	#define ASSERT(expr)  ((void)0)
 #endif
-
 
 /* S3 request configuration */
 typedef struct extstore_s3_req_cfg_ {
@@ -62,7 +60,6 @@ typedef struct extstore_s3_req_cfg_ {
 	int timeout;	    /* request timeout (ms) */
 	int log_props;	    /* [DBG] log response properties */
 } extstore_s3_req_cfg_t;
-
 
 /**
  * @brief posix error code from libS3 status error
@@ -82,7 +79,6 @@ typedef struct growbuffer_ {
 	struct growbuffer_ *prev;
 	struct growbuffer_ *next;
 } growbuffer_t;
-
 /**
  * @brief returns nonzero on success, zero on out of memory
  *
