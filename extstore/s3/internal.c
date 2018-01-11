@@ -391,7 +391,7 @@ int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 	sscanf(v, "%llu|", &root_ino);
 
 	/* init return values */
-	strcpy(obj_dir, "/");
+	obj_dir[0] = '\0';
 	obj_fname[0] = '\0';
 
 	while (ino != root_ino) {
@@ -403,8 +403,8 @@ int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 		snprintf(k, KLEN, "%llu.stat", ino);
 		RC_WRAP(kvsal_get_stat, k, &stat);
 		if (stat.st_mode & S_IFDIR) {
-			prepend(obj_dir, v);
 			prepend(obj_dir, "/");
+			prepend(obj_dir, v);
 		} else {
 			strcpy(obj_fname, v);
 		}
