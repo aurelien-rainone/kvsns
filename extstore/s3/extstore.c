@@ -36,25 +36,6 @@
 #include "internal.h"
 #include "s3_methods.h"
 
-#define RC_WRAP(__function, ...) ({\
-	int __rc = __function(__VA_ARGS__);\
-	if (__rc != 0)	\
-		return __rc; })
-
-#define RC_WRAP_LABEL(__rc, __label, __function, ...) ({\
-	__rc = __function(__VA_ARGS__);\
-	if (__rc != 0)        \
-		goto __label; })
-
-
-#define S3_MAX_ACCESS_KEY_ID_SIZE 256		/* not sure about this */
-#define S3_MAX_SECRET_ACCESS_KEY_ID_SIZE 256	/* not sure about this */
-
-/* Default values for S3 requests configuration */
-#define S3_REQ_DEFAULT_RETRIES 3
-#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1
-#define S3_REQ_DEFAULT_TIMEOUT 10000
-
 
 static S3BucketContext bucket_ctx;
 static char host[S3_MAX_HOSTNAME_SIZE];
@@ -66,87 +47,6 @@ static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
  * S3 request configuration, may be overriden for specific requests
  */
 extstore_s3_req_cfg_t s3_req_cfg;
-
-/**
- * Prepends t into s. Assumes s has enough space allocated
- * for the combined string.
- */
-void prepend(char* s, const char* t)
-{
-	size_t i, len = strlen(t);
-	memmove(s + len, s, strlen(s) + 1);
-	for (i = 0; i < len; ++i)
-		s[i] = t[i];
-}
-
-/**
- * Build path of S3 Object and return object directory and filename.
- *
- * @param object - object inode.
- * @param obj_dir - [OUT] full S3 directory path, with trailing slash.
- * @param obj_fname - [OUT] S3 object filename, empty for a directory.
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-static int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
-{
-	char k[KLEN];
-	char v[VLEN];
-	kvsns_ino_t ino = object;
-	kvsns_ino_t root_ino = 0LL;
-	struct stat stat;
-
-	/* get root inode number */
-	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
-	sscanf(v, "%llu|", &root_ino);
-
-	/* init return values */
-	strcpy(obj_dir, "/");
-	obj_fname[0] = '\0';
-
-	while (ino != root_ino) {
-	
-		/* current inode name */
-		snprintf(k, KLEN, "%llu.name", ino);
-		RC_WRAP(kvsal_get_char, k, v);
-
-		snprintf(k, KLEN, "%llu.stat", ino);
-		RC_WRAP(kvsal_get_stat, k, &stat);
-		if (stat.st_mode & S_IFDIR) {
-			prepend(obj_dir, v);
-			prepend(obj_dir, "/");
-		} else {
-			strcpy(obj_fname, v);
-		}
-
-		/* get parent inode */
-		snprintf(k, KLEN, "%llu.parentdir", ino);
-		RC_WRAP(kvsal_get_char, k, v);
-		sscanf(v, "%llu|", &ino);
-	};
-
-	printf("%s obj=%llu dir=%s fname=%s\n",
-	       __func__,
-	       object, obj_dir, obj_fname);
-
-	return 0;	
-}
-
-/**
- * Build full path of S3 Object.
- *
- * @param object - object inode.
- * @param obj_path - [OUT] full S3 path, ends with slash for directories.
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-int build_fullpath(kvsns_ino_t object, char *obj_path)
-{
-	char fname[VLEN];
-	RC_WRAP(build_objpath, object, obj_path, fname);
-	strcat(obj_path, fname);
-	return 0;
-}
 
 int extstore_create(kvsns_ino_t object)
 {
