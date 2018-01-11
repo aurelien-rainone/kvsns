@@ -483,37 +483,20 @@ S3Status put_object(const S3BucketContext *ctx, const char *key,
 	cb_data.infile = 0;
 	cb_data.gb = 0;
 	cb_data.no_status = no_status;
-
 	cb_data.status = S3StatusOK;
 	cb_data.config = req_cfg;
 
 	/* Read from stdin. If contentLength is not provided, we have to read it
 	 * all in to get contentLength.
 	 */
-	if (!content_len) {
+	if (content_len) {
 
-		// Read all if stdin to get the data
-		char buffer[64 * 1024];
-		while (1) {
-			int amtRead = fread(buffer, 1, sizeof(buffer), stdin);
-			if (amtRead == 0)
-				break;
-			if (!growbuffer_append(&(cb_data.gb), buffer, amtRead)) {
-				fprintf(stderr,
-					"\nERROR: Out of memory while reading stdin\n");
-					return S3StatusOutOfMemory;
-			}
-			content_len += amtRead;
-			if (amtRead < (int) sizeof(buffer))
-				break;
+		/* copy the buffer data to the grow buffer */
+		if (!growbuffer_append(&(cb_data.gb), buf, buflen)) {
+			printf("ERROR: Out of memory creating PUT buffer\n");
+			       return S3StatusOutOfMemory;
 		}
-	}
-	else {
-		/* XXX: if reading bytes from file is to be implemented, we may
-		 * use this parameter, but for now content_len = 0 means empty
-		 * S3 Object
-		 */
-		/*cb_data.infile = stdin;*/
+		content_len = buflen;
 	}
 
 	cb_data.total_content_len = content_len;

@@ -57,9 +57,10 @@ int extstore_create(kvsns_ino_t object)
 
 	build_fullpath(object, fullpath);
 
-	/* perform PUT */
+	/* perform 0 bytes PUT to create the objet if it doesn't exist or set
+	 * its length to 0 bytes in case it does */
 	if ((s3rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0)
-				  != S3StatusOK)) {
+			!= S3StatusOK)) {
 		return s3status2posix_error(s3rc);
 	}
 
@@ -207,12 +208,24 @@ int extstore_write(kvsns_ino_t *ino,
 		   bool *fsal_stable,
 		   struct stat *stat)
 {
+	S3Status s3rc;
+	char fullpath[256];
 	printf("%s ino=%llu off=%ld bufsize=%lu\n",
 	       __func__,
 	       *ino, offset, buffer_size);
-	return  0;
-}
 
+	build_fullpath(*ino, fullpath);
+	ASSERT(fullpath[0] == '/');
+
+	/* perform PUT */
+	if ((s3rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg,
+			       buffer, buffer_size)
+			!= S3StatusOK)) {
+		return s3status2posix_error(s3rc);
+	}
+
+	return 0;
+}
 
 int extstore_truncate(kvsns_ino_t *ino,
 		      off_t filesize,
