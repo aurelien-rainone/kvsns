@@ -369,3 +369,63 @@ void growbuffer_destroy(growbuffer_t *gb)
 		gb = (next == start) ? 0 : next;
 	}
 }
+
+void prepend(char* s, const char* t)
+{
+	size_t i, len = strlen(t);
+	memmove(s + len, s, strlen(s) + 1);
+	for (i = 0; i < len; ++i)
+		s[i] = t[i];
+}
+
+int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
+{
+	char k[KLEN];
+	char v[VLEN];
+	kvsns_ino_t ino = object;
+	kvsns_ino_t root_ino = 0LL;
+	struct stat stat;
+
+	/* get root inode number */
+	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
+	sscanf(v, "%llu|", &root_ino);
+
+	/* init return values */
+	strcpy(obj_dir, "/");
+	obj_fname[0] = '\0';
+
+	while (ino != root_ino) {
+
+		/* current inode name */
+		snprintf(k, KLEN, "%llu.name", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+
+		snprintf(k, KLEN, "%llu.stat", ino);
+		RC_WRAP(kvsal_get_stat, k, &stat);
+		if (stat.st_mode & S_IFDIR) {
+			prepend(obj_dir, v);
+			prepend(obj_dir, "/");
+		} else {
+			strcpy(obj_fname, v);
+		}
+
+		/* get parent inode */
+		snprintf(k, KLEN, "%llu.parentdir", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+		sscanf(v, "%llu|", &ino);
+	};
+
+	printf("%s obj=%llu dir=%s fname=%s\n",
+	       __func__,
+	       object, obj_dir, obj_fname);
+
+	return 0;
+}
+
+int build_fullpath(kvsns_ino_t object, char *obj_path)
+{
+	char fname[VLEN];
+	RC_WRAP(build_objpath, object, obj_path, fname);
+	strcat(obj_path, fname);
+	return 0;
+}
