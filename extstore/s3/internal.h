@@ -99,6 +99,7 @@ typedef struct growbuffer_ {
 	struct growbuffer_ *prev;
 	struct growbuffer_ *next;
 } growbuffer_t;
+
 /**
  * @brief returns nonzero on success, zero on out of memory
  *
