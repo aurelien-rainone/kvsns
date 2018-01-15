@@ -72,8 +72,7 @@ S3Status put_object(const S3BucketContext *ctx, const char *key,
  *
  * @return S3StatusOK if successful.
  */
-S3Status stats_object(const S3BucketContext *ctx,
-		      const char *key,
+S3Status stats_object(const S3BucketContext *ctx, const char *key,
 		      extstore_s3_req_cfg_t *req_cfg,
 		      time_t *mtime, uint64_t *size);
 
