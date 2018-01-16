@@ -292,7 +292,7 @@ int s3status2posix_error(const S3Status s3_errorcode)
 			break;
 
 	}
-	return rc;
+	return -rc;
 }
 
 int growbuffer_append(growbuffer_t **gb, const char *data, int data_len)

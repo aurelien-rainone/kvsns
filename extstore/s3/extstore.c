@@ -50,7 +50,7 @@ extstore_s3_req_cfg_t s3_req_cfg;
 
 int extstore_create(kvsns_ino_t object)
 {
-	S3Status s3rc;
+	int rc;
 	char fullpath[256];
 
 	printf("%s obj=%llu\n", __func__, object);
@@ -59,11 +59,8 @@ int extstore_create(kvsns_ino_t object)
 
 	/* perform 0 bytes PUT to create the objet if it doesn't exist or set
 	 * its length to 0 bytes in case it does */
-	s3rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0);
-	if (s3rc != S3StatusOK)
-		return s3status2posix_error(s3rc);
-
-	return 0;
+	rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0);
+	return rc;
 }
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
@@ -161,13 +158,8 @@ int extstore_init(struct collection_item *cfg_items)
 	s3_req_cfg.timeout = S3_REQ_DEFAULT_TIMEOUT;
 	s3_req_cfg.log_props = 1;
 
-	/* TODO: Add S3_WRAP macro that wraps S3Status check and converts
-	 * error code to posix if necessary */
-	s3rc = test_bucket(&bucket_ctx, &s3_req_cfg);
-	if (s3rc != S3StatusOK)
-		return s3status2posix_error(s3rc);
-
-	return 0;
+	rc = test_bucket(&bucket_ctx, &s3_req_cfg);
+	return rc;
 }
 
 int extstore_fini()
@@ -206,7 +198,7 @@ int extstore_write(kvsns_ino_t *ino,
 		   struct stat *stat)
 {
 	int rc;
-	S3Status s3rc;
+	int bytes_written;
 	char fullpath[256];
 
 	printf("%s ino=%llu off=%ld bufsize=%lu\n",
@@ -217,16 +209,16 @@ int extstore_write(kvsns_ino_t *ino,
 	ASSERT(fullpath[0] == '/');
 
 	/* perform PUT */
-	s3rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg,
-			  buffer, buffer_size);
-	if (s3rc != S3StatusOK)
-		return s3status2posix_error(s3rc);
+	bytes_written = put_object(&bucket_ctx, fullpath, &s3_req_cfg,
+				   buffer, buffer_size);
+	if (bytes_written < 0)
+		return bytes_written;
 
 	rc = extstore_getattr(ino, stat);
 	if (rc != 0)
 		return rc;
 
-	return 0;
+	return bytes_written;
 }
 
 int extstore_truncate(kvsns_ino_t *ino,
@@ -243,7 +235,7 @@ int extstore_truncate(kvsns_ino_t *ino,
 int extstore_getattr(kvsns_ino_t *ino,
 		     struct stat *stat)
 {
-	S3Status s3rc;
+	int rc;
 	time_t mtime;
 	uint64_t size;
 	char fullpath[256];
@@ -260,11 +252,10 @@ int extstore_getattr(kvsns_ino_t *ino,
 	 * and zero st_size, st_mtime and st_atime.
 	 * (@see `extstore_getattr` in rados).
 	 */
-	s3rc = stats_object(&bucket_ctx, fullpath, &s3_req_cfg,
+	rc = stats_object(&bucket_ctx, fullpath, &s3_req_cfg,
 			    &mtime, &size);
-	if (s3rc != S3StatusOK)
-		/* TODO: log errors */
-		return s3status2posix_error(s3rc);
+	if (rc != 0)
+		return rc;
 
 	stat->st_size = size;
 	stat->st_mtime = mtime;

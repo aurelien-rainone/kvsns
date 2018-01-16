@@ -164,8 +164,8 @@ void resp_complete_cb(S3Status status,
 	}
 }
 
-S3Status test_bucket(const S3BucketContext *ctx,
-		     extstore_s3_req_cfg_t *req_cfg)
+int test_bucket(const S3BucketContext *ctx,
+		extstore_s3_req_cfg_t *req_cfg)
 {
 	char location[64];
 	struct s3_resp_cb_data cb_data;
@@ -204,8 +204,12 @@ S3Status test_bucket(const S3BucketContext *ctx,
 		++interval;
 	} while (should_retry(cb_data.status, retries, interval));
 
-	/* TODO: log errors */
-	return cb_data.status;
+	if (cb_data.status != S3StatusOK) {
+		int rc = s3status2posix_error(cb_data.status);
+		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		return rc;
+	}
+	return 0;
 }
 
 typedef struct upload_mgr_{
@@ -488,9 +492,9 @@ int try_get_parts_info(const S3BucketContext *ctx, const char *key,
 	return 0;
 }
 
-S3Status put_object(const S3BucketContext *ctx, const char *key,
-		    extstore_s3_req_cfg_t *req_cfg,
-		    const char *buf, size_t buflen)
+int put_object(const S3BucketContext *ctx, const char *key,
+	       extstore_s3_req_cfg_t *req_cfg,
+	       const char *buf, size_t buflen)
 {
 	const char *upload_id = 0;
 	/*const char *filename = 0;*/
@@ -515,8 +519,10 @@ S3Status put_object(const S3BucketContext *ctx, const char *key,
 
 		/* copy the buffer data to the grow buffer */
 		if (!growbuffer_append(&(cb_data.gb), buf, buflen)) {
-			printf("ERROR: Out of memory creating PUT buffer\n");
-			       return S3StatusOutOfMemory;
+			int rc = s3status2posix_error(S3StatusOutOfMemory);
+			printf("%s error: Out of memory creating PUT buffer, rc=%d\n",
+			       __func__, rc);
+			       return rc;
 		}
 		content_len = buflen;
 	}
@@ -721,11 +727,15 @@ clean:
 		free(manager.etags);
 	}
 
-	/* TODO: AR check if this is always the correct status*/
-	return cb_data.status;
+	if (cb_data.status != S3StatusOK) {
+		int rc = s3status2posix_error(cb_data.status);
+		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		return rc;
+	}
+	return 0;
 }
 
-S3Status stats_object(const S3BucketContext *ctx,
+int stats_object(const S3BucketContext *ctx,
 		      const char *key,
 		      extstore_s3_req_cfg_t *req_cfg,
 		      time_t *mtime, uint64_t *size)
@@ -752,6 +762,13 @@ S3Status stats_object(const S3BucketContext *ctx,
 		++interval;
 	} while (should_retry(cb_data.status, retries, interval));
 
-	/* TODO: log errors */
-	return cb_data.status;
+	if (cb_data.status == S3StatusOK) {
+		*mtime = cb_data.mtime;
+		*size = cb_data.size;
+	} else {
+		int rc = s3status2posix_error(cb_data.status);
+		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		return rc;
+	}
+	return 0;
 }

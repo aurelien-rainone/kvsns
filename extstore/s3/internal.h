@@ -88,7 +88,7 @@ typedef struct extstore_s3_req_cfg_ {
  *
  * @param[in] s3_errorcode libs3 error
  *
- * @return posix errno.
+ * @return negative posix error numbers.
  */
 int s3status2posix_error(const S3Status s3_errorcode);
 
