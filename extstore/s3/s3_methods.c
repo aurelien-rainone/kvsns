@@ -369,8 +369,8 @@ typedef struct put_object_callback_data_
 	int no_status;
 } put_object_callback_data_t;
 
-static int putObjectDataCallback(int bufsize, char *buffer,
-				 void *cb_data_)
+static int put_object_data_cb(int bufsize, char *buffer,
+			      void *cb_data_)
 {
 	put_object_callback_data_t *cb_data =
 	(put_object_callback_data_t *) cb_data_;
@@ -390,9 +390,10 @@ static int putObjectDataCallback(int bufsize, char *buffer,
 	cb_data->total_content_len -= ret;
 
 	if (cb_data->content_len && !cb_data->no_status) {
-		printf("%llu bytes remaining (%d%% complete) ...\n",
-		      (unsigned long long) cb_data->total_content_len,
-		      (int) (((cb_data->total_org_content_len -
+		printf("%s %llu bytes remaining (%d%% complete) ...\n",
+		       __func__,
+		       (unsigned long long) cb_data->total_content_len,
+		       (int) (((cb_data->total_org_content_len -
 			cb_data->total_content_len) * 100) /
 			cb_data->total_org_content_len));
 	}
@@ -552,7 +553,7 @@ int put_object(const S3BucketContext *ctx, const char *key,
 				&resp_props_cb,
 				&resp_complete_cb
 			},
-			&putObjectDataCallback
+			&put_object_data_cb
 		};
 
 		do {
@@ -607,7 +608,7 @@ int put_object(const S3BucketContext *ctx, const char *key,
 				&multiparts_resp_props_cb,
 				&resp_complete_cb
 			},
-			&putObjectDataCallback
+			&put_object_data_cb
 		};
 
 		S3MultipartCommitHandler commit_handler = {
