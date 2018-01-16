@@ -41,10 +41,10 @@
  * @param ctx - libs3 bucket context.
  * @param req_cfg - config for this request.
  *
- * @return S3StatusOK if successful.
+ * @return 0 if successful, a negative posix error code in case of error.
  */
-S3Status test_bucket(const S3BucketContext *ctx,
-		     extstore_s3_req_cfg_t *req_cfg);
+int test_bucket(const S3BucketContext *ctx,
+		extstore_s3_req_cfg_t *req_cfg);
 
 /**
  * Send object to S3.
@@ -55,11 +55,13 @@ S3Status test_bucket(const S3BucketContext *ctx,
  * @param buf - bytes to be sent to S3.
  * @param buflen - length of buf (0 means an empty S3 object).
  *
- * @return S3StatusOK if successful.
+ * @return a negative posix error code in case of error, a positive value
+ *    represents the number of bytes actually written to S3, 0 meaning all bytes
+ *    have been sent.
  */
-S3Status put_object(const S3BucketContext *ctx, const char *key,
-		    extstore_s3_req_cfg_t *req_cfg,
-		    const char *buf, size_t buflen);
+int put_object(const S3BucketContext *ctx, const char *key,
+	       extstore_s3_req_cfg_t *req_cfg,
+	       const char *buf, size_t buflen);
 
 /**
  * Request S3 object stat.
@@ -70,10 +72,12 @@ S3Status put_object(const S3BucketContext *ctx, const char *key,
  * @param mtime - [OUT] object mtime
  * @param size - [OUT] object size
  *
- * @return S3StatusOK if successful.
+ * @return a negative posix error code in case of error, a positive value
+ *   represents the number of bytes actually received from S3, 0 meaning all bytes
+ *   requested have been received.
  */
-S3Status stats_object(const S3BucketContext *ctx, const char *key,
-		      extstore_s3_req_cfg_t *req_cfg,
-		      time_t *mtime, uint64_t *size);
+int stats_object(const S3BucketContext *ctx, const char *key,
+		 extstore_s3_req_cfg_t *req_cfg,
+		 time_t *mtime, uint64_t *size);
 
 #endif
