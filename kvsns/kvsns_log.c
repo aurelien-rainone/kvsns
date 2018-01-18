@@ -40,6 +40,10 @@ typedef struct loglev {
 	int syslog_level;
 } log_level_t;
 
+struct log_component_info {
+	const char *comp_name;	/* component name */
+	const char *comp_str;	/* shorter, more useful name */
+};
 
 static log_level_t tabLogLevel[] = {
 	[LVL_NULL] = {"LVL_NULL", "NULL", LOG_NOTICE},
@@ -48,6 +52,24 @@ static log_level_t tabLogLevel[] = {
 	[LVL_WARN] = {"LVL_WARN", "WARN", LOG_WARNING},
 	[LVL_INFO] = {"LVL_INFO", "INFO", LOG_INFO},
 	[LVL_DEBUG] = {"LVL_DEBUG", "DEBUG", LOG_DEBUG},
+};
+
+struct log_component_info LogComponents[COMPONENT_COUNT] = {
+	[COMPONENT_ALL] = {
+		.comp_name = "COMPONENT_ALL",
+		.comp_str = "",},
+	[COMPONENT_LOG] = {
+		.comp_name = "COMPONENT_LOG",
+		.comp_str = "LOG",},
+	[COMPONENT_KVSNS] = {
+		.comp_name = "COMPONENT_KVSNS",
+		.comp_str = "KVSNS",},
+	[COMPONENT_KVSAL] = {
+		.comp_name = "COMPONENT_KVSAL",
+		.comp_str = "KVSAL",},
+	[COMPONENT_EXTSTORE] = {
+		.comp_name = "COMPONENT_EXTSTORE",
+		.comp_str = "EXTSTORE",}
 };
 
 /*static int syslog_opened = 0;*/
@@ -70,7 +92,11 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 		syslog_opened = 1;
 	}*/
 	char fmtbuf[1024];
-	snprintf(fmtbuf, sizeof(fmtbuf), "%s :%s %s", function, tabLogLevel[level].short_str, format);
+	snprintf(fmtbuf, sizeof(fmtbuf), "%s :%s :%s %s",
+		 function,
+		 LogComponents[component].comp_str,
+		 tabLogLevel[level].short_str,
+		 format);
 
 	vsyslog(tabLogLevel[level].syslog_level, fmtbuf, arguments);
 	va_end(arguments);
