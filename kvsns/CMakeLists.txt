@@ -5,6 +5,7 @@ SET(kvsns_LIB_SRCS
     kvsns_internal.c
     kvsns_xattr.c
     kvsns_copy.c
+    kvsns_log.c
 )
 
 add_library(kvsns SHARED ${kvsns_LIB_SRCS})

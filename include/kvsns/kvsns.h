@@ -90,8 +90,71 @@
 #define KVSNS_ACCESS_WRITE	2
 #define KVSNS_ACCESS_EXEC	4
 
-/* KVSAL related definitions and functions */
 
+/* Logging related definitions and functions */
+
+/*
+ * Log message severity constants
+ */
+typedef enum log_levels {
+	LVL_NULL,
+	LVL_FATAL,
+	LVL_CRIT,
+	LVL_WARN,
+	LVL_INFO,
+	LVL_DEBUG,
+	NB_LOG_LEVEL
+} log_levels_t;
+
+/*
+ * Log components used throughout the code.
+ */
+typedef enum log_components {
+	COMPONENT_ALL = 0,	/* Used for changing logging for all
+				 * components */
+	COMPONENT_LOG,		/* Keep this first, some code depends on it
+				 * being the first component */
+	COMPONENT_KVSNS,
+	COMPONENT_KVSAL,
+	COMPONENT_EXTSTORE,
+	COMPONENT_COUNT
+} log_components_t;
+
+void LogWithComponentAndLevel(log_components_t component, char *file, int line,
+			      char *function, log_levels_t level, char *format,
+			      ...);
+
+#define LogFatal(component, format, args...) \
+	LogWithComponentAndLevel(component, (char *) __FILE__,\
+				 __LINE__, \
+				 (char *) __func__, \
+				 LVL_FATAL, format, ## args);
+
+#define LogCrit(component, format, args...) \
+	LogWithComponentAndLevel(component, (char *) __FILE__,\
+				 __LINE__, \
+				 (char *) __func__, \
+				 LVL_CRIT, format, ## args);
+
+#define LogWarn(component, format, args...) \
+	LogWithComponentAndLevel(component, (char *) __FILE__,\
+				 __LINE__, \
+				 (char *) __func__, \
+				 LVL_WARN, format, ## args);
+#define LogInfo(component, format, args...) \
+	LogWithComponentAndLevel(component, (char *) __FILE__,\
+				 __LINE__, \
+				 (char *) __func__, \
+				 LVL_INFO, format, ## args);
+
+#define LogDebug(component, format, args...) \
+	LogWithComponentAndLevel(component, (char *) __FILE__,\
+				 __LINE__, \
+				 (char *) __func__, \
+				 LVL_DEBUG, format, ## args);
+
+
+/* KVSAL related definitions and functions */
 
 typedef unsigned long long int kvsns_ino_t;
 
