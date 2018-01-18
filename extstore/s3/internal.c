@@ -415,10 +415,6 @@ int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 		sscanf(v, "%llu|", &ino);
 	};
 
-	printf("%s obj=%llu dir=%s fname=%s\n",
-	       __func__,
-	       object, obj_dir, obj_fname);
-
 	return 0;
 }
 

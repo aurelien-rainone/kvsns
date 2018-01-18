@@ -62,14 +62,6 @@ struct s3_resp_cb_data {
 	uint64_t size;	/*< [OUT] size to be by callback */
 };
 
-static char errorDetailsG[4096] = { 0 };
-void printError(S3Status status)
-{
-	fprintf(stderr, "\nERROR: %s\n", S3_get_status_name(status));
-	if (status >= S3StatusErrorAccessDenied)
-		fprintf(stderr, "%s\n", errorDetailsG);
-}
-
 int should_retry(S3Status st, int retries, int interval)
 {
 	if (S3_status_is_retryable(st) && retries--) {
@@ -89,14 +81,14 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
 	if (cb_data->config->log_props) {
 
 #define PRINT_PROP(name, field) ({\
-		if (props->field) printf("%s: %s\n", name, props->field); })
+		if (props->field) LogDebug(COMPONENT_EXTSTORE, "%s=%s", name, props->field); })
 
 		PRINT_PROP("Content-Type", contentType);
 		PRINT_PROP("Request-Id", requestId);
 		PRINT_PROP("Request-Id-2", requestId2);
 		if (props->contentLength > 0)
-			printf("Content-Length: %llu\n",
-			       (unsigned long long) props->contentLength);
+			LogDebug(COMPONENT_EXTSTORE, "Content-Length=%llu",
+				 (unsigned long long) props->contentLength);
 		PRINT_PROP("Server", server);
 		PRINT_PROP("ETag", eTag);
 		if (props->lastModified > 0) {
@@ -105,26 +97,25 @@ S3Status resp_props_cb(const S3ResponseProperties *props,
 			/* gmtime is not thread-safe but we don't care here. */
 			strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
 				 gmtime(&t));
-			printf("Last-Modified: %s\n", timebuf);
+			LogDebug(COMPONENT_EXTSTORE, "Last-Modified=%s", timebuf);
 		}
 		int i;
 		for (i = 0; i < props->metaDataCount; i++) {
-			printf("x-amz-meta-%s: %s\n",
-			       props->metaData[i].name,
-			       props->metaData[i].value);
+			LogDebug(COMPONENT_EXTSTORE, "x-amz-meta-%s=%s",
+				 props->metaData[i].name,
+				 props->metaData[i].value);
 		}
 		if (props->usesServerSideEncryption)
-			printf("UsesServerSideEncryption: true\n");
+			LogDebug(COMPONENT_EXTSTORE, "UsesServerSideEncryption=true");
 	}
 
 	if (cb_data->should_set_stats) {
                 cb_data->mtime = (time_t) props->lastModified;
                 cb_data->size = (uint64_t) props->contentLength;
 
-		printf("%s set_stats=1 mtime=%lu size=%lu\n",
-		       __func__,
-		       cb_data->mtime,
-		       cb_data->size);
+		LogDebug(COMPONENT_EXTSTORE, "set_stats=1 mtime=%lu size=%lu",
+			 cb_data->mtime,
+			 cb_data->size);
 	}
 
 	return S3StatusOK;
@@ -144,23 +135,25 @@ void resp_complete_cb(S3Status status,
 	/* set status */
 	cb_data->status = status;
 
-	if (status == S3StatusOK)
-		printf("%s Successful request, res=%s\n",
-		       __func__, error->resource);
-	else if (error) {
+	if (status != S3StatusOK && error) {
 		if (error->message)
-			printf("%s Message: %s\n", __func__, error->message);
+			LogWarn(COMPONENT_EXTSTORE,
+				"msg=%s",
+				error->message);
 		if (error->resource)
-			printf("%s Resource: %s\n", __func__, error->resource);
+			LogWarn(COMPONENT_EXTSTORE,
+				"resource=%s",
+				error->resource);
 		if (error->furtherDetails)
-			printf("%s Further details: %s\n",
-			       __func__, error->furtherDetails);
+			LogWarn(COMPONENT_EXTSTORE,
+				"details=%s",
+				error->furtherDetails);
 		if (error->extraDetailsCount)
 			for (i = 0; i < error->extraDetailsCount; i++)
-				printf("%s Extra details: %s->%s\n",
-				       __func__,
-				       error->extraDetails[i].name,
-				       error->extraDetails[i].value);
+				LogWarn(COMPONENT_EXTSTORE,
+					"extra-details %s=%s",
+					error->extraDetails[i].name,
+					error->extraDetails[i].value);
 	}
 }
 
@@ -183,7 +176,7 @@ int test_bucket(const S3BucketContext *ctx,
 		&resp_complete_cb
 	};
 
-	printf("%s bkt=%s\n", __func__, ctx->bucketName);
+	LogInfo(COMPONENT_EXTSTORE, "bkt=%s", ctx->bucketName);
 
 	do {
 		S3_test_bucket(ctx->protocol,
@@ -206,7 +199,8 @@ int test_bucket(const S3BucketContext *ctx,
 
 	if (cb_data.status != S3StatusOK) {
 		int rc = s3status2posix_error(cb_data.status);
-		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
+			cb_data.status, rc);
 		return rc;
 	}
 	return 0;
@@ -245,20 +239,6 @@ typedef struct list_parts_callback_data_
 void print_list_multipart_hdr(int all_details)
 {
 	(void)all_details;
-}
-
-void print_list_parts_hdr()
-{
-	printf("%-25s  %-30s  %-30s   %-15s",
-	       "LastModified",
-	       "PartNumber", "ETag", "SIZE");
-
-	printf("\n");
-	printf("---------------------  "
-	       "    -------------    "
-	       "-------------------------------  "
-	       "               -----");
-	printf("\n");
 }
 
 S3Status list_parts_cb(int is_truncated,
@@ -328,9 +308,6 @@ S3Status list_parts_cb(int is_truncated,
 		cb_data->storage_cls[0] = 0;
 	}
 
-	if (num_parts && !cb_data->num_parts && !cb_data->no_print)
-		print_list_parts_hdr();
-
 	int i;
 	for (i = 0; i < num_parts; i++) {
 		const S3ListPart *part = &(parts[i]);
@@ -343,10 +320,10 @@ S3Status list_parts_cb(int is_truncated,
 			time_t t = (time_t) part->lastModified;
 			strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
 				 gmtime(&t));
-			printf("%-30s", timebuf);
-			printf("%-15llu", (unsigned long long) part->partNumber);
-			printf("%-45s", part->eTag);
-			printf("%-15llu\n", (unsigned long long) part->size);
+			LogDebug(COMPONENT_EXTSTORE, "%-30s", timebuf);
+			LogDebug(COMPONENT_EXTSTORE, "%-15llu", (unsigned long long) part->partNumber);
+			LogDebug(COMPONENT_EXTSTORE, "%-45s", part->eTag);
+			LogDebug(COMPONENT_EXTSTORE, "%-15llu\n", (unsigned long long) part->size);
 		}
 	}
 
@@ -390,12 +367,12 @@ static int put_object_data_cb(int bufsize, char *buffer,
 	cb_data->total_content_len -= ret;
 
 	if (cb_data->content_len && !cb_data->no_status) {
-		printf("%s %llu bytes remaining (%d%% complete) ...\n",
-		       __func__,
-		       (unsigned long long) cb_data->total_content_len,
-		       (int) (((cb_data->total_org_content_len -
-			cb_data->total_content_len) * 100) /
-			cb_data->total_org_content_len));
+		LogDebug(COMPONENT_EXTSTORE,
+			 "%llu bytes remaining (%d%% complete) ...\n",
+			 (unsigned long long) cb_data->total_content_len,
+			 (int) (((cb_data->total_org_content_len -
+			 cb_data->total_content_len) * 100) /
+			 cb_data->total_org_content_len));
 	}
 
 	return ret;
@@ -486,7 +463,8 @@ int try_get_parts_info(const S3BucketContext *ctx, const char *key,
 		if (!cb_data.num_parts)
 			print_list_multipart_hdr(cb_data.all_details);
 	} else {
-		printError(cb_data.status);
+		LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s", cb_data.status,
+			S3_get_status_name(cb_data.status));
 		return -1;
 	}
 
@@ -521,9 +499,10 @@ int put_object(const S3BucketContext *ctx, const char *key,
 		/* copy the buffer data to the grow buffer */
 		if (!growbuffer_append(&(cb_data.gb), buf, buflen)) {
 			int rc = s3status2posix_error(S3StatusOutOfMemory);
-			printf("%s error: Out of memory creating PUT buffer, rc=%d\n",
-			       __func__, rc);
-			       return rc;
+			LogCrit(COMPONENT_EXTSTORE,
+				"out of memory creating PUT buffer, rc=%d",
+				rc);
+				return rc;
 		}
 		content_len = buflen;
 	}
@@ -571,11 +550,11 @@ int put_object(const S3BucketContext *ctx, const char *key,
 			growbuffer_destroy(cb_data.gb);
 
 		if (cb_data.status != S3StatusOK) {
-			printf("%s status=%d err=%s\n", __func__,
+			LogCrit(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
 			       cb_data.status, S3_get_status_name(cb_data.status));
 		} else if (cb_data.content_len) {
-			fprintf(stderr,
-				"\nERROR: Failed to read remaining %llu bytes from input\n",
+			LogCrit(COMPONENT_EXTSTORE,
+				"Failed to read remaining %llu bytes from input",
 				(unsigned long long) cb_data.content_len);
 		}
 
@@ -649,7 +628,9 @@ int put_object(const S3BucketContext *ctx, const char *key,
 		} while (should_retry(fake_statusG, retries, interval));
 
 		if (manager.upload_id == 0 || fake_statusG != S3StatusOK) {
-			printError(fake_statusG);
+			LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
+				fake_statusG,
+				S3_get_status_name(fake_statusG));
 			goto clean;
 		}
 
@@ -662,7 +643,9 @@ upload:
 			part_data.put_object_data = cb_data;
 			part_content_len = ((content_len > MULTIPART_CHUNK_SIZE) ?
 				MULTIPART_CHUNK_SIZE : content_len);
-			printf("%s Part Seq %d, length=%d\n", "Sending", seq, part_content_len);
+
+			LogDebug(COMPONENT_EXTSTORE,
+				"sending part=%d partlen=%d", seq, part_content_len);
 			part_data.put_object_data.content_len = part_content_len;
 			part_data.put_object_data.org_content_len = part_content_len;
 			part_data.put_object_data.total_content_len = todo_content_len;
@@ -677,7 +660,9 @@ upload:
 				/*}*/
 			} while (should_retry(cb_data.status, retries, interval));
 			if (cb_data.status != S3StatusOK) {
-				printError(cb_data.status);
+				LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
+					cb_data.status,
+					S3_get_status_name(cb_data.status));
 				goto clean;
 			}
 			content_len -= MULTIPART_CHUNK_SIZE;
@@ -715,7 +700,10 @@ upload:
 		} while (should_retry(fake_statusG, retries, interval));
 
 		if (fake_statusG != S3StatusOK) {
-			printError(fake_statusG);
+			LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
+				fake_statusG,
+				S3_get_status_name(fake_statusG));
+
 			goto clean;
 		}
 
@@ -730,7 +718,8 @@ clean:
 
 	if (cb_data.status != S3StatusOK) {
 		int rc = s3status2posix_error(cb_data.status);
-		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
+			cb_data.status, rc);
 		return rc;
 	}
 	return 0;
@@ -768,7 +757,8 @@ int stats_object(const S3BucketContext *ctx,
 		*size = cb_data.size;
 	} else {
 		int rc = s3status2posix_error(cb_data.status);
-		printf("%s error s3rc=%d rc=%d\n", __func__, cb_data.status, rc);
+		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
+			cb_data.status, rc);
 		return rc;
 	}
 	return 0;

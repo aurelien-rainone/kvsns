@@ -53,9 +53,9 @@ int extstore_create(kvsns_ino_t object)
 	int rc;
 	char fullpath[256];
 
-	printf("%s obj=%llu\n", __func__, object);
-
 	build_fullpath(object, fullpath);
+
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu path=%s", object, fullpath);
 
 	/* perform 0 bytes PUT to create the objet if it doesn't exist or set
 	 * its length to 0 bytes in case it does */
@@ -72,10 +72,8 @@ int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 	 * with KVSNS_S3 defines.
 	 */
 
-	printf("%s ino=%llu objid=%s objid_len=%d\n",
-	       __func__,
+	LogDebug(COMPONENT_EXTSTORE, "%s ino=%llu objid=%s objid_len=%d",
 	       *ino, objid, objid_len);
-
 	return 0;
 }
 
@@ -85,7 +83,7 @@ int extstore_init(struct collection_item *cfg_items)
 	S3Status s3rc;
 	struct collection_item *item;
 
-	printf("%s\n", __func__);
+	LogDebug(COMPONENT_EXTSTORE, "initialising s3 store");
 
 	if (cfg_items == NULL)
 		return -EINVAL;
@@ -146,6 +144,9 @@ int extstore_init(struct collection_item *cfg_items)
 	bucket_ctx.protocol = S3ProtocolHTTP;
 	bucket_ctx.uriStyle = S3UriStylePath;
 
+	LogDebug(COMPONENT_EXTSTORE, "bucket=%s host=%s",
+			 bucket_ctx.bucketName, bucket_ctx.hostName);
+
 	/* Initialize libs3 */
 	s3rc = S3_initialize("kvsns", S3_INIT_ALL, host);
 	if (s3rc != S3StatusOK)
@@ -164,7 +165,7 @@ int extstore_init(struct collection_item *cfg_items)
 
 int extstore_fini()
 {
-	printf("%s\n", __func__);
+	LogDebug(COMPONENT_EXTSTORE, "releasing s3 store");
 
 	/* release libs3 */
 	S3_deinitialize();
@@ -173,7 +174,7 @@ int extstore_fini()
 
 int extstore_del(kvsns_ino_t *ino)
 {
-	printf("%s ino=%llu\n", __func__, *ino);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu not implemented", *ino)
 	return 0;
 }
 
@@ -184,9 +185,8 @@ int extstore_read(kvsns_ino_t *ino,
 		  bool *end_of_file,
 		  struct stat *stat)
 {
-	printf("%s ino=%llu off=%ld bufsize=%lu\n",
-	       __func__,
-	       *ino, offset, buffer_size);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu",
+	         *ino, offset, buffer_size);
 	return 0;
 }
 
@@ -201,12 +201,11 @@ int extstore_write(kvsns_ino_t *ino,
 	int bytes_written;
 	char fullpath[256];
 
-	printf("%s ino=%llu off=%ld bufsize=%lu\n",
-	       __func__,
-	       *ino, offset, buffer_size);
-
 	build_fullpath(*ino, fullpath);
 	ASSERT(fullpath[0] == '/');
+
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu path=%s",
+	         *ino, offset, buffer_size, fullpath);
 
 	/* perform PUT */
 	bytes_written = put_object(&bucket_ctx, fullpath, &s3_req_cfg,
@@ -226,9 +225,8 @@ int extstore_truncate(kvsns_ino_t *ino,
 		      bool on_obj_store,
 		      struct stat *stat)
 {
-	printf("%s ino=%llu filesize=%ld on_obj_store=%d\n",
-	       __func__,
-	       *ino, filesize, on_obj_store);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu filesize=%lu not implemented",
+	         *ino, filesize);
 	return 0;
 }
 
@@ -240,7 +238,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	uint64_t size;
 	char fullpath[256];
 
-	printf("%s ino=%llu\n", __func__, *ino);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
 	build_fullpath(*ino, fullpath);
 	ASSERT(fullpath[0] == '/');
