@@ -17,7 +17,6 @@ message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
 
 # Option (for choosing KVSAL backend)
 option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" ON)
-option(USE_KVS_MERO "Use MERO as a KVS in KVSAL" OFF)
 
 option(USE_POSIX_STORE "Use POSIX directory as object store" ON)
 option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)

@@ -1,0 +1,248 @@
+I. BUILDING KVSNS
+--------------
+I make here the assumption that KVSNS sources are under ~/kvsns
+1- create build directory
+	# mkdir /tmp/kvsns_build
+2- run cmake from this build directory
+	# cd /tmp/kvsns_build
+(in this example we use REDIS as KVS and RADOS as object store)
+	# cmake -DUSE_KVS_REDIS=ON -DUSE_RADOS=ON ~/kvsns
+3- Compile
+	# make all links rpm
+
+II. INSTALLING KVSNS
+----------------
+1- Install the libkvsns and libkvsns-devel rpm
+	# use "yum install" on previously compiled RPMs
+
+
+III. CONFGURING KVSNS
+----------------
+1- edit /etc/kvsns.d/kvsns.ini
+    For RADOS, it should look like this. Make sure that rados works
+    on your host before configuring. The name listed here MUST exist.
+    [rados]
+    pool = kvsns
+    cluster = ceph
+    user = client.admin
+    config = /etc/ceph/ceph.conf
+
+    For Redis setup you can specify the host running redis and the related
+    port. Default would be localhost:6379
+    [kvsal_redis]
+    server = localhost
+    port = 6379
+
+    Make sure redis works (using redis-cli, for example)
+
+    POSIX_OBJ and POSIX_STORE and dummy, POSIX FS based, backend. The only
+    required parameter is a directory that must exist and used to store
+    "objects (which are actually files).
+
+3- init KVSNS namespace
+	# cd /tmp/kvsns_build/kvsns_shell
+	# ./ns_init
+4- test the namespace
+	# use links from /tmp/kvsns_build/kvsns_shell to manipulate the namespace
+    (for example you make use kvsns_co for copying file to the namespace)
+        # (from kvsns_shell directory)
+        # ./ns_mkdir dir
+        # ./kvsns_cp <my local file> kvsns:dir/my_dest_file
+    (if you want to copy back, it's like scp, use the kvsns:<path> first)
+
+LibKVSNS can be use with nfs-ganesha
+    # you should checkout https://github.com/phdeniel/nfs-ganesha
+    # the branch to be used is "KVSNS", it's based on nfs-ganesha-2.4
+
+IV. COMPILING GANESHA (sources under ~/nfs-ganesha
+-----------------
+1- Create build directory
+	# mkdir /tmp/ganesha_build
+2- run cmake and build ganesha
+	# cd /tmp/ganesha_build
+	# cmake ~/nfs-ganesha/src
+	# make all rpms
+    # (Make sure that that FSAL_KVSFS is ON, it's automatic is rpm for
+    libkvsns and libkvsns-devel are installed)
+
+V. CONFIGURING GANESHA (NO RPM)
+-------------------
+1- edit /etc/nfs-ganesha/kvsfs.ganesha.nfsd.conf, using this template
+EXPORT
+{
+  # Export Id (mandatory)
+  Export_Id = 77 ;
+  Path = "/";
+  FSAL {
+    name = KVSFS;
+    kvsns_config = /etc/kvsns.d/kvsns.ini;
+  }
+  Pseudo = /kvsns;
+  Protocols=  NFSV3, 4, 9p;
+  SecType = sys;
+  MaxRead = 32768;
+  MaxWrite = 32768;
+  Filesystem_id = 192.168;
+  Tag = temp;
+  client {
+        clients = *;
+        Squash=no_root_squash;
+        access_type=RW;
+        protocols = 3, 4, 9p;
+  }
+
+}
+
+FSAL
+{
+  KVSFS
+   {
+      FSAL_Shared_Library = /tmp/ganesha_build/FSAL/FSAL_KVSFS/libfsalkvsfs.so.4.2.0 ;
+   }
+
+}
+
+FileSystem
+{
+
+  Link_support = TRUE;     # hardlink support
+  Symlink_support = TRUE;  # symlinks support
+  CanSetTime = TRUE;       # Is it possible to change file times
+}
+
+NFS_Core_Param
+{
+        Nb_Worker = 10 ;
+
+        # NFS Port to be used
+        # Default value is 2049
+        NFS_Port = 2049 ;
+
+        # Mount protocol RPC Program Number
+        # Default value is 100005
+        #MNT_Program = 100005 ;
+        Protocols = 3, 4, 9p;
+
+        Manage_Gids_Expiration = 3600;
+
+        Plugins_Dir = /tmp/ganesha_build/FSAL/FSAL_KVSFS ;
+}
+
+NFSv4
+{
+  # Domain Name
+  DomainName = localdomain ;
+
+  # Lease_Lifetime = 10 ;
+  Graceless = YES;
+}
+
+2- Run nfs-ganesha from the sources
+	# cd /tmp/ganesha_build/MainNFSD
+	# ./ganesha.nfsd -L /dev/tty -F -f ~/kvsfs.ganesha.nfsd.conf
+
+VI. CONFIGURING GANESHA (WITH RPM)
+------------------------------
+1- Install the nfs-ganesha and nfs-ganesha-kvsfs rpms
+2- edit /etc/ganesha/ganesha.conf
+EXPORT
+{
+        # Export Id (mandatory, each EXPORT must have a unique Export_Id)
+        Export_Id = 77;
+
+        # Exported path (mandatory)
+        Path = "/" ;
+
+        # Pseudo Path (required for NFS v4)
+        Pseudo = /kvsns;
+
+        # Required for access (default is None)
+        # Could use CLIENT blocks instead
+        Access_Type = RW;
+
+        # Exporting FSAL
+        FSAL {
+                Name = KVSFS;
+                kvsns_config = /etc/kvsns.d/kvsns.ini;
+        }
+}
+
+NFS_Core_Param
+{
+        Nb_Worker = 10;
+}
+
+3- start ganesha using systemctl
+	# systemctl start nfs-gnesha
+
+
+
+VII. MOUNT GANESHA ON CLIENT (not the same node as the one running ganesha)
+-----------------------
+1- Using NFSv4
+	# mount -overs=4 client-21:/kvsns /mnt
+2- Using NFSv4.1
+	# mount -overs=4.1  client-21:/kvsns /mnt
+3- Using NFSv3
+	# mount -overs=3 client-21:/ /mnt
+
+VIII. Enabling pNFS (server side)
+---------------------------------
+In this section, we will be using client-21 and client-22 as servers.
+Node client-21 is the MDS (Metadata Server) and client-22 is a DS (Data Server).
+
+1- Edit Ganesha config file on MDS to enable pNFS.
+The "Export" stanza is the only one to be touched.
+
+EXPORT
+{
+  # Export Id (mandatory)
+  Export_Id = 77 ;
+  Path = "/";
+  FSAL {
+    name = KVSFS;
+    kvsns_config = /etc/kvsns.d/kvsns.ini;
+    PNFS {
+       Stripe_Unit = 8192;
+       pnfs_enabled = true;
+       Nb_Dataserver = 2;
+        DS1 {
+                DS_Addr = x1.y1.z1.t1; # DS Ip address
+                DS_Port = 2049;
+        }
+        DS2 {
+                DS_Addr = x2.y2.z2.t2; # DS Ip address
+                DS_Port = 2049;
+        }
+    }
+  }
+  Pseudo = /pseudo;
+  Protocols=  NFSV3, 4, 9p;
+  SecType = sys;
+  MaxRead = 32768;
+  MaxWrite = 32768;
+  Filesystem_id = 192.168;
+  Tag = temp;
+  client {
+        clients = *;
+        Squash=no_root_squash;
+        access_type=RW;
+        protocols = 3, 4, 9p;
+  }
+
+}
+
+The DS will be using the same configuration file as the one shown in sections V and VI.
+
+2- Start the DS and the MDS (see section V and VI).
+3- Use modprobe to enable pNFS on the client side
+	# modprobe nfs_layout_nfsv41_files
+4- Check that modules was correctely loaded
+	# lsmod | grep nfs_layout
+	nfs_layout_nfsv41_files    24018  0
+	nfsv4                 546174  1 nfs_layout_nfsv41_files
+	nfs                   256665  6 nfsv3,nfsv4,nfs_layout_nfsv41_files
+	sunrpc                334343  26 nfs,nfsd,auth_rpcgss,lockd,nfsv3,nfsv4,nfs_acl,nfs_layout_nfsv41_files
+5- Mount the MDS, using NFSv4.1 (pNFS is a NFSv4.1 feature, it does not exist
+over NFSv4.0 or NFSv3)
+	# mount -overs=4.1 client-21:/kvsns /mnt
