@@ -378,8 +378,6 @@ static int put_object_data_cb(int bufsize, char *buffer,
 	return ret;
 }
 
-#define MULTIPART_CHUNK_SIZE (15 << 20) // multipart is 15M
-
 typedef struct multipart_part_data_ {
 	put_object_callback_data_t put_object_data;
 	int seq;
@@ -526,7 +524,7 @@ int put_object(const S3BucketContext *ctx, const char *key,
 		PUT_SERVERSIDE_ENCRYPT,
 	};
 
-	if (content_len <= MULTIPART_CHUNK_SIZE) {
+	if (content_len <= S3_MULTIPART_CHUNK_SIZE) {
 		S3PutObjectHandler put_obj_handler = {
 			{
 				&resp_props_cb,
@@ -568,8 +566,8 @@ int put_object(const S3BucketContext *ctx, const char *key,
 
 		//div round up
 		int seq;
-		int total_seq = ((content_len + MULTIPART_CHUNK_SIZE- 1) /
-			MULTIPART_CHUNK_SIZE);
+		int total_seq = ((content_len + S3_MULTIPART_CHUNK_SIZE- 1) /
+			S3_MULTIPART_CHUNK_SIZE);
 
 		multipart_part_data_t part_data;
 		int part_content_len = 0;
@@ -635,14 +633,14 @@ int put_object(const S3BucketContext *ctx, const char *key,
 		}
 
 upload:
-		todo_content_len -= MULTIPART_CHUNK_SIZE * manager.next_etags_pos;
+		todo_content_len -= S3_MULTIPART_CHUNK_SIZE * manager.next_etags_pos;
 		for (seq = manager.next_etags_pos + 1; seq <= total_seq; seq++) {
 			memset(&part_data, 0, sizeof(multipart_part_data_t));
 			part_data.manager = &manager;
 			part_data.seq = seq;
 			part_data.put_object_data = cb_data;
-			part_content_len = ((content_len > MULTIPART_CHUNK_SIZE) ?
-				MULTIPART_CHUNK_SIZE : content_len);
+			part_content_len = ((content_len > S3_MULTIPART_CHUNK_SIZE) ?
+				S3_MULTIPART_CHUNK_SIZE : content_len);
 
 			LogDebug(COMPONENT_EXTSTORE,
 				"sending part=%d partlen=%d", seq, part_content_len);
@@ -665,8 +663,8 @@ upload:
 					S3_get_status_name(cb_data.status));
 				goto clean;
 			}
-			content_len -= MULTIPART_CHUNK_SIZE;
-			todo_content_len -= MULTIPART_CHUNK_SIZE;
+			content_len -= S3_MULTIPART_CHUNK_SIZE;
+			todo_content_len -= S3_MULTIPART_CHUNK_SIZE;
 		}
 
 		int i;
