@@ -356,3 +356,13 @@ exitok:
 
 	return 0;
 }
+
+int extstore_open(kvsns_ino_t ino, int flags)
+{
+	return 0;
+}
+
+int extstore_close(kvsns_ino_t ino)
+{
+	return 0;
+}
