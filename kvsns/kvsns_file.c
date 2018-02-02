@@ -150,6 +150,9 @@ int kvsns_open(kvsns_cred_t *cred, kvsns_ino_t *ino,
 
 	/* In particular create a key per opened fd */
 
+	/* forward open to the store */
+	extstore_open(*ino, flags);
+
 	return 0;
 }
 
@@ -178,8 +181,13 @@ int kvsns_close(kvsns_file_open_t *fd)
 	bool opened_and_deleted;
 	bool delete_object = false;
 
+	LogDebug(COMPONENT_KVSNS, "ino=%llu", fd->ino);
+
 	if (!fd)
 		return -EINVAL;
+
+	/* forward close to the store */
+	extstore_close(fd->ino);
 
 	snprintf(k, KLEN, "%llu.openowner", fd->ino);
 	rc = kvsal_get_char(k, v);
