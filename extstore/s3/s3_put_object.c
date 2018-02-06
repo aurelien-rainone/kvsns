@@ -29,6 +29,8 @@
 #include "s3_common.h"
 
 
+#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
+
 /* Default PUT properties */
 #define PUT_CONTENT_TYPE NULL
 #define PUT_MD5 NULL
@@ -77,16 +79,16 @@ void print_list_multipart_hdr(int all_details)
 }
 
 S3Status list_parts_cb(int is_truncated,
-		      const char *next_partnum_marker,
-		      const char *initiator_id,
-		      const char *initiator_name,
-		      const char *owner_id,
-		      const char *owner_name,
-		      const char *storage_cls,
-		      int num_parts,
-		      int handle_parts_start,
-		      const S3ListPart *parts,
-		      void *cb_data_)
+		       const char *next_partnum_marker,
+		       const char *initiator_id,
+		       const char *initiator_name,
+		       const char *owner_id,
+		       const char *owner_name,
+		       const char *storage_cls,
+		       int num_parts,
+		       int handle_parts_start,
+		       const S3ListPart *parts,
+		       void *cb_data_)
 {
 	list_parts_callback_data_t *cb_data =
 		(list_parts_callback_data_t *) cb_data_;
@@ -212,9 +214,6 @@ static int put_object_data_cb(int bufsize, char *buffer,
 
 	return ret;
 }
-
-//#define MULTIPART_CHUNK_SIZE (15 << 20) // multipart is 15M
-#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
 
 typedef struct multipart_part_data_ {
 	put_object_callback_data_t put_object_data;
@@ -446,10 +445,9 @@ int put_object(const S3BucketContext *ctx,
 		manager.upload_id = 0;
 		manager.gb = 0;
 
-		//div round up
 		int seq;
 		int total_seq = ((content_len + MULTIPART_CHUNK_SIZE- 1) /
-			MULTIPART_CHUNK_SIZE);
+				MULTIPART_CHUNK_SIZE);
 
 		multipart_part_data_t part_data;
 		int part_content_len = 0;
@@ -482,17 +480,6 @@ int put_object(const S3BucketContext *ctx,
 		manager.etags = (char **) malloc(sizeof(char *) * total_seq);
 		manager.next_etags_pos = 0;
 		manager.status = 0;
-
-		if (upload_id) {
-			manager.upload_id = strdup(upload_id);
-			manager.remaining = content_len;
-			if (!try_get_parts_info(ctx, key, &manager, req_cfg)) {
-				fseek(cb_data.infile, -(manager.remaining), 2);
-				content_len = manager.remaining;
-				goto upload;
-			} else
-				goto clean;
-		}
 
 		do {
 			S3_initiate_multipart((S3BucketContext*)ctx, key, 0,
