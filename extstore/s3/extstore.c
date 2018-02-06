@@ -211,29 +211,19 @@ int extstore_init(struct collection_item *cfg_items)
 		return -rc;
 	}
 
-	/* init data cache directory */
+	/* init data cache directory (create it if needed) */
 	fds = g_tree_new(key_cmp_func);
 
 	struct stat st = {0};
-	if (stat(data_cache_dir, &st) != -1) {
+	if (stat(data_cache_dir, &st) == -1) {
 
-		/* data cache directory exists, empty it */
-		if (rmdir(data_cache_dir) < 0) {
+		if (mkdir(data_cache_dir, 0700) < 0) {
 			rc = errno;
 			LogCrit(COMPONENT_EXTSTORE,
-				"Can't remove data cache directory dir=%s rc=%d",
+				"Can't create data cache directory dir=%s rc=%d",
 				data_cache_dir, rc);
 			return -rc;
 		}
-	}
-
-	/* create the data cache dir */
-	if (mkdir(data_cache_dir, 0700) < 0) {
-		rc = errno;
-		LogCrit(COMPONENT_EXTSTORE,
-			"Can't create data cache directory dir=%s rc=%d",
-			data_cache_dir, rc);
-		return -rc;
 	}
 
 	return rc;
@@ -416,17 +406,39 @@ int extstore_open(kvsns_ino_t ino,
 int extstore_close(kvsns_ino_t ino)
 {
 	int rc;
-	LogDebug(COMPONENT_EXTSTORE, "ino=%d", ino);
+	int fd;
+	char s3_path[S3_MAX_KEY_SIZE];
+	char cache_path[MAXPATHLEN];
 
-	/* retrieve file descriptor */
+	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	build_datacache_path(ino, cache_path, MAXPATHLEN);
+
+	LogDebug(COMPONENT_EXTSTORE,
+		 "ino=%d s3key=%s",
+		 ino, s3_path);
+
+	/* retrieve file descriptor from tree */
 	gpointer key = g_tree_lookup(fds, (gpointer) ino);
 	if (key == NULL) {
 		return -ENOENT;
+	} else {
+		fd = (int) ((intptr_t) key);
+		rc = close(fd);
+		if (rc == -1) {
+			rc = errno;
+			LogDebug(COMPONENT_EXTSTORE,
+				 "error closing file descriptor, fd=%d errno=%d",
+				 fd, rc);
+		}
 	}
-	rc = close((int) ((intptr_t) key));
-	if (rc == -1) {
-		rc = errno;
-		LogDebug(COMPONENT_EXTSTORE, "error close, errno=%d", rc);
+
+	/* upload file */
+	rc = put_object(&bucket_ctx, s3_path, &s3_req_cfg, cache_path);
+	if (rc != 0) {
+		LogWarn(COMPONENT_EXTSTORE,
+			 "couldn't upload file ino=%d s3key=%s fd=%d",
+			 ino, s3_path, fd);
+		return rc;
 	}
 
 	/* remove file descriptor from tree */

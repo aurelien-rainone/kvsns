@@ -65,29 +65,13 @@ int stats_object(const S3BucketContext *ctx, const char *key,
 		 extstore_s3_req_cfg_t *req_cfg,
 		 time_t *mtime, uint64_t *size);
 
-
-#define MULTIPART_CHUNK_SIZE 1024*1024
+int put_object(const S3BucketContext *ctx,
+	       const char *key,
+	       extstore_s3_req_cfg_t *req_cfg,
+	       const char *src_file);
 
 /* forward declarations */
 typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
-
-void multipart_manager_init(const S3BucketContext *bucket_ctx);
-void multipart_manager_free();
-
-/* initiate multipart */
-int multipart_inode_init(kvsns_ino_t ino,
-			 char *fpath,
-			 extstore_s3_req_cfg_t *req_cfg);
-
-/* upload multipart chunk */
-int multipart_inode_upload_chunk(kvsns_ino_t ino,
-				 size_t chunkidx,
-				 void *buffer,
-				 size_t buffer_size);
-
-int multipart_inode_complete(kvsns_ino_t ino);
-
-int multipart_inode_free(kvsns_ino_t ino);
 
 /* S3 internal functions */
 int should_retry(S3Status st, int retries, int interval);
