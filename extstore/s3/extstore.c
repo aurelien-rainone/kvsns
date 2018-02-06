@@ -1,4 +1,4 @@
-/*
+﻿/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
@@ -28,33 +28,72 @@
 #include <kvsns/extstore.h>
 #include <kvsns/kvsal.h>
 #include <hiredis/hiredis.h>
+#include <gmodule.h>
 #include "internal.h"
 #include "s3_common.h"
 
 
+/* S3 bucket configuration */
 static S3BucketContext bucket_ctx;
 static char host[S3_MAX_HOSTNAME_SIZE];
 static char bucket[S3_MAX_BUCKET_NAME_SIZE];
 static char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
 static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
 
+/* data cache directory */
+char data_cache_dir[MAXPATHLEN];
+
+/* file descriptors */
+GTree *fds;
+
 /* 
  * S3 request configuration, may be overriden for specific requests
  */
 extstore_s3_req_cfg_t s3_req_cfg;
 
+int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname);
+
+int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
+
+int build_datacache_path(kvsns_ino_t object,
+			 char *data_cache_path,
+			 size_t pathlen);
+
 int extstore_create(kvsns_ino_t object)
 {
-	char fullpath[256];
+	int rc;
+	int fd;
+	char s3_path[S3_MAX_KEY_SIZE];
+	char cache_path[MAXPATHLEN];
 
-	build_fullpath(object, fullpath);
+	build_s3_path(object, s3_path, S3_MAX_KEY_SIZE);
+	build_datacache_path(object, cache_path, MAXPATHLEN);
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu path=%s", object, fullpath);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu path=%s cache=%s", object, s3_path, cache_path);
 
-	/* perform 0 bytes PUT to create the objet if it doesn't exist or set
-	 * its length to 0 bytes in case it does */
-	//rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0);
-	return 0;
+	/* for safety, remove the cache file and start anew */
+	rc = remove(cache_path);
+	if (rc < 0) {
+		rc = errno;
+		if (rc != ENOENT) {
+			/* we have a real error */
+			return -rc;
+		}
+		/* reset return code */
+		rc = 0;
+	}
+
+	/* create the cache entry */
+	fd = creat(cache_path, O_RDONLY);
+	if (fd < 0) {
+		rc = errno;
+		return -rc;
+	}
+
+	/* keep the file newly opened file descriptor */
+	g_tree_insert(fds, (gpointer) object, (gpointer)((gintptr) fd));
+
+	return rc;
 }
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
@@ -83,6 +122,16 @@ int extstore_init(struct collection_item *cfg_items)
 		return -EINVAL;
 
 	RC_WRAP(kvsal_init, cfg_items);
+
+	/* read location of data cache directory */
+	rc = get_config_item("s3", "data_cache_dir",
+			      cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item == NULL)
+		return -EINVAL;
+	strncpy(data_cache_dir, get_string_config_value(item, NULL),
+		MAXPATHLEN);
 
 	/* Allocate the S3 bucket context */
 	memset(&bucket_ctx, 0, sizeof(S3BucketContext));
@@ -153,9 +202,40 @@ int extstore_init(struct collection_item *cfg_items)
 	s3_req_cfg.timeout = S3_REQ_DEFAULT_TIMEOUT;
 	s3_req_cfg.log_props = 1;
 
+	/* check we can actually access the bucket */
 	rc = test_bucket(&bucket_ctx, &s3_req_cfg);
+	if (rc < 0) {
+		LogWarn(COMPONENT_EXTSTORE,
+			"Can't access bucket bucket=%s host=%s rc=%d",
+			bucket_ctx.bucketName, bucket_ctx.hostName, rc);
+		return -rc;
+	}
 
-	multipart_manager_init(&bucket_ctx);
+	/* init data cache directory */
+	fds = g_tree_new(key_cmp_func);
+
+	struct stat st = {0};
+	if (stat(data_cache_dir, &st) != -1) {
+
+		/* data cache directory exists, empty it */
+		if (rmdir(data_cache_dir) < 0) {
+			rc = errno;
+			LogCrit(COMPONENT_EXTSTORE,
+				"Can't remove data cache directory dir=%s rc=%d",
+				data_cache_dir, rc);
+			return -rc;
+		}
+	}
+
+	/* create the data cache dir */
+	if (mkdir(data_cache_dir, 0700) < 0) {
+		rc = errno;
+		LogCrit(COMPONENT_EXTSTORE,
+			"Can't create data cache directory dir=%s rc=%d",
+			data_cache_dir, rc);
+		return -rc;
+	}
+
 	return rc;
 }
 
@@ -165,7 +245,9 @@ int extstore_fini()
 
 	/* release resources */
 	S3_deinitialize();
-	multipart_manager_free();
+
+	g_tree_destroy(fds);
+	fds = NULL;
 
 	return 0;
 }
@@ -188,6 +270,8 @@ int extstore_read(kvsns_ino_t *ino,
 	return 0;
 }
 
+#if USE_DATACACHE
+
 int extstore_write(kvsns_ino_t *ino,
 		   off_t offset,
 		   size_t buffer_size,
@@ -197,13 +281,49 @@ int extstore_write(kvsns_ino_t *ino,
 {
 	int rc;
 	ssize_t bytes_written;
-	char fullpath[256];	
+	char s3_path[S3_MAX_KEY_SIZE];
+	char cache_path[MAXPATHLEN];
 
-	build_fullpath(*ino, fullpath);
-	ASSERT(fullpath[0] == '/');
+	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	build_datacache_path(*ino, cache_path, MAXPATHLEN);
+
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
+		 *ino, offset, buffer_size, s3_path, stat->st_size, cache_path);
+
+
+	/* retrieve file descriptor */
+	gpointer key = g_tree_lookup(fds, (gpointer) *ino);
+	if (key == NULL) {
+		return -ENOENT;
+	}
+	bytes_written = pwrite((int) ((intptr_t) key), buffer, buffer_size, offset);
+	if (bytes_written == -1) {
+		rc = errno;
+		LogDebug(COMPONENT_EXTSTORE, "error pwrite, errno=%d", rc);
+		return -rc;
+	}
+
+	return bytes_written;
+}
+
+#else
+
+int extstore_write(kvsns_ino_t *ino,
+		   off_t offset,
+		   size_t buffer_size,
+		   void *buffer,
+		   bool *fsal_stable,
+		   struct stat *stat)
+{
+	int rc;
+	ssize_t bytes_written;
+	char s3_path[S3_MAX_KEY_SIZE];	
+
+	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	ASSERT(s3_path[0] == '/');
 
 	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu path=%s s3sz=%lu",
-		 *ino, offset, buffer_size, fullpath, stat->st_size);
+		 *ino, offset, buffer_size, s3_path, stat->st_size);
 
 	/* get attr from the store (HEAD object), if size is 0, we can start a multipart */
 	rc = extstore_getattr(ino, stat);
@@ -218,7 +338,7 @@ int extstore_write(kvsns_ino_t *ino,
 		if (offset == 0) {
 			LogDebug(COMPONENT_EXTSTORE, "initiating multipart ino=%llu", *ino);
 			/* initiate multipart */
-			multipart_inode_init(*ino, fullpath, &s3_req_cfg);
+			multipart_inode_init(*ino, s3_path, &s3_req_cfg);
 		}
 		size_t chunkidx = offset / MULTIPART_CHUNK_SIZE;
 		bytes_written = multipart_inode_upload_chunk(*ino, chunkidx, buffer, buffer_size);
@@ -238,6 +358,9 @@ int extstore_write(kvsns_ino_t *ino,
 	return bytes_written;
 }
 
+#endif
+
+
 int extstore_truncate(kvsns_ino_t *ino,
 		      off_t filesize,
 		      bool on_obj_store,
@@ -254,12 +377,12 @@ int extstore_getattr(kvsns_ino_t *ino,
 	int rc;
 	time_t mtime;
 	uint64_t size;
-	char fullpath[256];
+	char s3_path[S3_MAX_KEY_SIZE];
 
 	LogDebug(COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
-	build_fullpath(*ino, fullpath);
-	ASSERT(fullpath[0] == '/');
+	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	ASSERT(s3_path[0] == '/');
 
 	/* perform HEAD on S3 object*/
 	/* TODO: what happens if the object doesn't exist?
@@ -268,7 +391,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	 * and zero st_size, st_mtime and st_atime.
 	 * (@see `extstore_getattr` in rados).
 	 */
-	rc = stats_object(&bucket_ctx, fullpath, &s3_req_cfg,
+	rc = stats_object(&bucket_ctx, s3_path, &s3_req_cfg,
 			    &mtime, &size);
 
 	if (rc != 0)
@@ -292,6 +415,93 @@ int extstore_open(kvsns_ino_t ino,
 
 int extstore_close(kvsns_ino_t ino)
 {
+	int rc;
 	LogDebug(COMPONENT_EXTSTORE, "ino=%d", ino);
+
+	/* retrieve file descriptor */
+	gpointer key = g_tree_lookup(fds, (gpointer) ino);
+	if (key == NULL) {
+		return -ENOENT;
+	}
+	rc = close((int) ((intptr_t) key));
+	if (rc == -1) {
+		rc = errno;
+		LogDebug(COMPONENT_EXTSTORE, "error close, errno=%d", rc);
+	}
+
+	/* remove file descriptor from tree */
+	g_tree_remove(fds, (gpointer) ino);
+
+	return rc;
+}
+
+/**
+ * Build path of S3 Object and return object directory and filename.
+ *
+ * @param object - object inode.
+ * @param obj_dir - [OUT] full S3 directory path.
+ * @param obj_fname - [OUT] S3 object filename, empty for a directory.
+ *
+ * @note Returned directory path doesn't start with a '/' as libs3 requires
+ * object keys to be formatted in this way. The bucket root is an empty string.
+ * However directory paths are returned with a trailing '/', this is a S3
+ * requirement.
+ *
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
+{
+	char k[KLEN];
+	char v[VLEN];
+	kvsns_ino_t ino = object;
+	kvsns_ino_t root_ino = 0LL;
+	struct stat stat;
+
+	/* get root inode number */
+	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
+	sscanf(v, "%llu|", &root_ino);
+
+	/* init return values */
+	obj_dir[0] = '\0';
+	obj_fname[0] = '\0';
+
+	while (ino != root_ino) {
+
+		/* current inode name */
+		snprintf(k, KLEN, "%llu.name", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+
+		snprintf(k, KLEN, "%llu.stat", ino);
+		RC_WRAP(kvsal_get_stat, k, &stat);
+		if (stat.st_mode & S_IFDIR) {
+			prepend(obj_dir, "/");
+			prepend(obj_dir, v);
+		} else {
+			strcpy(obj_fname, v);
+		}
+
+		/* get parent inode */
+		snprintf(k, KLEN, "%llu.parentdir", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+		sscanf(v, "%llu|", &ino);
+	};
+
 	return 0;
 }
+
+int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
+{
+	char fname[VLEN];
+	RC_WRAP(build_s3_object_path, object, obj_path, fname);
+	strcat(obj_path, fname);
+	return 0;
+}
+
+int build_datacache_path(kvsns_ino_t object,
+			 char *data_cache_path,
+			 size_t pathlen)
+{
+	return snprintf(data_cache_path, pathlen, "%s/%llu",
+			data_cache_dir, (unsigned long long)object);
+}
+

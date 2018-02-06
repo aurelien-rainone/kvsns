@@ -4,7 +4,6 @@ SET(extstore_LIB_SRCS
    s3_common.c
    s3_stats_object.c
    s3_test_bucket.c
-   s3_multipart.c
    internal.c
 )
 

@@ -31,6 +31,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <kvsns/kvsns.h>
+#include <gmodule.h>
 #include <libs3.h>
 
 
@@ -114,26 +115,11 @@ void growbuffer_destroy(growbuffer_t *gb);
 void prepend(char* s, const char* t);
 
 /**
- * Build path of S3 Object and return object directory and filename.
- *
- * @param object - object inode.
- * @param obj_dir - [OUT] full S3 directory path.
- * @param obj_fname - [OUT] S3 object filename, empty for a directory.
- *
- * @note Returned directory path doesn't start with a '/' as libs3 requires 
- * object keys to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a S3 
- * requirement.
- * 
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname);
-
-/**
  * Build full path of S3 Object.
  *
  * @param object - object inode.
  * @param obj_path - [OUT] full S3 path
+ * @param pathlen - [IN] max path length
  * 
  * @note Returned path doesn't start with a '/' as libs3 requires object keys
  * to be formatted in this way. The bucket root is an empty string.
@@ -142,8 +128,23 @@ int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname);
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int build_fullpath(kvsns_ino_t object, char *obj_path);
+int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
+
+/**
+ * Build path of data cache file for a given inode.
+ *
+ * @param object - object inode.
+ * @param datacache_path - [OUT] data cache file path
+ * @param pathlen - [IN] max path length
+ * 
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_datacache_path(kvsns_ino_t object,
+			 char *data_cache_path,
+			 size_t pathlen);
 
 char* printf_open_flags(char *dst, int flags, const size_t len);
+
+gint key_cmp_func (gconstpointer a, gconstpointer b);
 
 #endif

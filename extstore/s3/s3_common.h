@@ -35,6 +35,8 @@
 #include <libs3.h>
 #include "internal.h"
 
+#define USE_DATACACHE 1
+
 /**
  * Test bucket existence/access.
  *
