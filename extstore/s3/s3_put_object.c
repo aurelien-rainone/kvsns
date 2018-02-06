@@ -537,10 +537,11 @@ upload:
 				final_status = cb_data.status;
 
 			} while (should_retry(final_status, retries, interval));
-			if (interval != S3StatusOK) {
+
+			if (final_status != S3StatusOK) {
 				LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
-					interval,
-					S3_get_status_name(interval));
+					final_status,
+					S3_get_status_name(final_status));
 				goto clean;
 			}
 			content_len -= MULTIPART_CHUNK_SIZE;
