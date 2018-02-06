@@ -25,10 +25,6 @@
  * -------------
  */
 
-/* internal.h
- * KVSNS: S3 extstore internal declarations.
- */
-
 #ifndef _S3_EXTSTORE_INTERNAL_H
 #define _S3_EXTSTORE_INTERNAL_H
 
@@ -147,5 +143,7 @@ int build_objpath(kvsns_ino_t object, char *obj_dir, char *obj_fname);
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
 int build_fullpath(kvsns_ino_t object, char *obj_path);
+
+char* printf_open_flags(char *dst, int flags, const size_t len);
 
 #endif

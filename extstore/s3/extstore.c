@@ -25,16 +25,11 @@
  * -------------
  */
 
-/* extstore.c
- * KVSNS: expose an S3 object store. Use Redis to retrieve object full paths.
- */
-
-
 #include <kvsns/extstore.h>
 #include <kvsns/kvsal.h>
 #include <hiredis/hiredis.h>
 #include "internal.h"
-#include "s3_methods.h"
+#include "s3_common.h"
 
 
 static S3BucketContext bucket_ctx;
@@ -50,7 +45,6 @@ extstore_s3_req_cfg_t s3_req_cfg;
 
 int extstore_create(kvsns_ino_t object)
 {
-	int rc;
 	char fullpath[256];
 
 	build_fullpath(object, fullpath);
@@ -59,8 +53,8 @@ int extstore_create(kvsns_ino_t object)
 
 	/* perform 0 bytes PUT to create the objet if it doesn't exist or set
 	 * its length to 0 bytes in case it does */
-	rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0);
-	return rc;
+	//rc = put_object(&bucket_ctx, fullpath, &s3_req_cfg, NULL, 0);
+	return 0;
 }
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
@@ -160,6 +154,8 @@ int extstore_init(struct collection_item *cfg_items)
 	s3_req_cfg.log_props = 1;
 
 	rc = test_bucket(&bucket_ctx, &s3_req_cfg);
+
+	multipart_manager_init(&bucket_ctx);
 	return rc;
 }
 
@@ -167,8 +163,10 @@ int extstore_fini()
 {
 	LogDebug(COMPONENT_EXTSTORE, "releasing s3 store");
 
-	/* release libs3 */
+	/* release resources */
 	S3_deinitialize();
+	multipart_manager_free();
+
 	return 0;
 }
 
@@ -198,24 +196,44 @@ int extstore_write(kvsns_ino_t *ino,
 		   struct stat *stat)
 {
 	int rc;
-	int bytes_written;
-	char fullpath[256];
+	ssize_t bytes_written;
+	char fullpath[256];	
 
 	build_fullpath(*ino, fullpath);
 	ASSERT(fullpath[0] == '/');
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu path=%s",
-	         *ino, offset, buffer_size, fullpath);
+	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu path=%s s3sz=%lu",
+		 *ino, offset, buffer_size, fullpath, stat->st_size);
 
-	/* perform PUT */
-	bytes_written = put_object(&bucket_ctx, fullpath, &s3_req_cfg,
-				   buffer, buffer_size);
-	if (bytes_written < 0)
-		return bytes_written;
-
+	/* get attr from the store (HEAD object), if size is 0, we can start a multipart */
 	rc = extstore_getattr(ino, stat);
-	if (rc != 0)
-		return rc;
+
+	/* TODO: error handling (rc < 0) */
+	(void) rc;
+
+	if (stat->st_size == 0) {
+		/* we are uploading an object, it may exist already, but anyway
+		 * its size being 0 we can overwrite it without problems :-) */
+
+		if (offset == 0) {
+			LogDebug(COMPONENT_EXTSTORE, "initiating multipart ino=%llu", *ino);
+			/* initiate multipart */
+			multipart_inode_init(*ino, fullpath, &s3_req_cfg);
+		}
+		size_t chunkidx = offset / MULTIPART_CHUNK_SIZE;
+		bytes_written = multipart_inode_upload_chunk(*ino, chunkidx, buffer, buffer_size);
+	} else {
+		/* we are modifying an existing object */
+	}
+
+	/* TODO: error handling */
+
+//	if (bytes_written < 0)
+//		return bytes_written;
+
+//	rc = extstore_getattr(ino, stat);
+//	if (rc != 0)
+//		return rc;
 
 	return bytes_written;
 }
@@ -252,6 +270,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	 */
 	rc = stats_object(&bucket_ctx, fullpath, &s3_req_cfg,
 			    &mtime, &size);
+
 	if (rc != 0)
 		return rc;
 
@@ -259,5 +278,20 @@ int extstore_getattr(kvsns_ino_t *ino,
 	stat->st_mtime = mtime;
 	stat->st_atime = mtime;
 
+	return 0;
+}
+
+int extstore_open(kvsns_ino_t ino,
+		  int flags)
+{
+	char strflags[1024] = "\0";
+	LogDebug(COMPONENT_EXTSTORE, "ino=%d flags=o%o", ino, flags);
+	LogDebug(COMPONENT_EXTSTORE, "flags=%s", printf_open_flags(strflags, flags, 1024));
+	return 0;
+}
+
+int extstore_close(kvsns_ino_t ino)
+{
+	LogDebug(COMPONENT_EXTSTORE, "ino=%d", ino);
 	return 0;
 }

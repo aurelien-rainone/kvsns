@@ -47,23 +47,6 @@ int test_bucket(const S3BucketContext *ctx,
 		extstore_s3_req_cfg_t *req_cfg);
 
 /**
- * Send object to S3.
- *
- * @param ctx - libs3 bucket context.
- * @param key - key to create/replace/modify.
- * @param req_cfg - config for this request.
- * @param buf - bytes to be sent to S3.
- * @param buflen - length of buf (0 means an empty S3 object).
- *
- * @return a negative posix error code in case of error, a positive value
- *    represents the number of bytes actually written to S3, 0 meaning all bytes
- *    have been sent.
- */
-int put_object(const S3BucketContext *ctx, const char *key,
-	       extstore_s3_req_cfg_t *req_cfg,
-	       const char *buf, size_t buflen);
-
-/**
  * Request S3 object stat.
  *
  * @param ctx - libs3 bucket context.
@@ -79,5 +62,34 @@ int put_object(const S3BucketContext *ctx, const char *key,
 int stats_object(const S3BucketContext *ctx, const char *key,
 		 extstore_s3_req_cfg_t *req_cfg,
 		 time_t *mtime, uint64_t *size);
+
+
+#define MULTIPART_CHUNK_SIZE 1024*1024
+
+/* forward declarations */
+typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
+
+void multipart_manager_init(const S3BucketContext *bucket_ctx);
+void multipart_manager_free();
+
+/* initiate multipart */
+int multipart_inode_init(kvsns_ino_t ino,
+			 char *fpath,
+			 extstore_s3_req_cfg_t *req_cfg);
+
+/* upload multipart chunk */
+int multipart_inode_upload_chunk(kvsns_ino_t ino,
+				 size_t chunkidx,
+				 void *buffer,
+				 size_t buffer_size);
+
+int multipart_inode_complete(kvsns_ino_t ino);
+
+int multipart_inode_free(kvsns_ino_t ino);
+
+/* S3 internal functions */
+int should_retry(S3Status st, int retries, int interval);
+S3Status log_response_properties(const S3ResponseProperties *props, void *data);
+void log_response_status_error(S3Status status, const S3ErrorDetails *error);
 
 #endif

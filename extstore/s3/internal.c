@@ -31,6 +31,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include "internal.h"
 
 
@@ -42,6 +43,7 @@ int s3status2posix_error(const S3Status s3_errorcode)
 
 		case S3StatusOK:
 			rc = 0;
+			break;
 
 		/*
 		 * Errors that prevent the S3 request from being issued or
@@ -277,6 +279,12 @@ int s3status2posix_error(const S3Status s3_errorcode)
 			rc = ECONNABORTED;
 			break;
 
+		case S3StatusHttpErrorNotFound:
+			rc = ENOENT;
+			break;
+		case S3StatusHttpErrorForbidden:
+			rc = EACCES;
+
 		/*
 		* The following are HTTP errors returned by S3 without enough
 		* detail to distinguish any of the above S3StatusError
@@ -284,14 +292,18 @@ int s3status2posix_error(const S3Status s3_errorcode)
 		*/
 		case S3StatusHttpErrorMovedTemporarily:
 		case S3StatusHttpErrorBadRequest:
-		case S3StatusHttpErrorForbidden:
-		case S3StatusHttpErrorNotFound:
 		case S3StatusHttpErrorConflict:
 		case S3StatusHttpErrorUnknown:
 			rc = ECONNABORTED;
 			break;
 
 	}
+	if (s3_errorcode != S3StatusOK) {
+		LogWarn(COMPONENT_EXTSTORE,
+			"Mapping %d(%s) to errno %d",
+			s3_errorcode, S3_get_status_name(s3_errorcode), rc);
+	}
+
 	return -rc;
 }
 
@@ -424,4 +436,33 @@ int build_fullpath(kvsns_ino_t object, char *obj_path)
 	RC_WRAP(build_objpath, object, obj_path, fname);
 	strcat(obj_path, fname);
 	return 0;
+}
+
+char* printf_open_flags(char *dst, int flags, const size_t len)
+{
+	if (flags & O_ACCMODE) strncat(dst, "O_ACCMODE ", len);
+	if (flags & O_RDONLY) strncat(dst, "O_RDONLY ", len);
+	if (flags & O_WRONLY) strncat(dst, "O_WRONLY ", len);
+	if (flags & O_RDWR) strncat(dst, "O_RDWR ", len);
+	if (flags & O_CREAT) strncat(dst, "O_CREAT ", len);
+	if (flags & O_EXCL) strncat(dst, "O_EXCL ", len);
+	if (flags & O_NOCTTY) strncat(dst, "O_NOCTTY ", len);
+	if (flags & O_TRUNC) strncat(dst, "O_TRUNC ", len);
+	if (flags & O_APPEND) strncat(dst, "O_APPEND ", len);
+	if (flags & O_NONBLOCK) strncat(dst, "O_NONBLOCK ", len);
+	if (flags & O_DSYNC) strncat(dst, "O_DSYNC ", len);
+	if (flags & FASYNC) strncat(dst, "FASYNC ", len);
+#ifdef O_DIRECT
+	if (flags & O_DIRECT) strncat(dst, "O_DIRECT ", len);
+#endif
+#ifdef O_LARGEFILE
+	if (flags & O_LARGEFILE) strncat(dst, "O_LARGEFILE ", len);
+#endif
+	if (flags & O_DIRECTORY) strncat(dst, "O_DIRECTORY ", len);
+	if (flags & O_NOFOLLOW) strncat(dst, "O_NOFOLLOW ", len);
+#ifdef O_NOATIME
+	if (flags & O_NOATIME) strncat(dst, "O_NOATIME ", len);
+#endif
+	if (flags & O_CLOEXEC) strncat(dst, "O_CLOEXEC ", len);
+	return dst;
 }
