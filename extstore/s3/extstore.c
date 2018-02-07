@@ -113,7 +113,7 @@ int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 int extstore_init(struct collection_item *cfg_items)
 {
 	int rc;
-	S3Status s3rc;
+	S3Status s3_status;
 	struct collection_item *item;
 
 	LogDebug(COMPONENT_EXTSTORE, "initialising s3 store");
@@ -191,9 +191,9 @@ int extstore_init(struct collection_item *cfg_items)
 			 bucket_ctx.bucketName, bucket_ctx.hostName);
 
 	/* Initialize libs3 */
-	s3rc = S3_initialize("kvsns", S3_INIT_ALL, host);
-	if (s3rc != S3StatusOK)
-		return s3status2posix_error(s3rc);
+	s3_status = S3_initialize("kvsns", S3_INIT_ALL, host);
+	if (s3_status != S3StatusOK)
+		return s3status2posix_error(s3_status);
 
 	/* Initialize S3 request config */
 	memset(&s3_req_cfg, 0, sizeof(extstore_s3_req_cfg_t));

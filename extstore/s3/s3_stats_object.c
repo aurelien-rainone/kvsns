@@ -70,6 +70,7 @@ int stats_object(const S3BucketContext *ctx,
 		      extstore_s3_req_cfg_t *req_cfg,
 		      time_t *mtime, uint64_t *size)
 {
+	int rc;
 	struct _resp_cb_data_t cb_data;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
@@ -93,11 +94,12 @@ int stats_object(const S3BucketContext *ctx,
 	if (cb_data.status == S3StatusOK) {
 		*mtime = cb_data.mtime;
 		*size = cb_data.size;
+		rc = 0;
 	} else {
-		int rc = s3status2posix_error(cb_data.status);
-		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
+		rc = s3status2posix_error(cb_data.status);
+		LogWarn(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+			S3_get_status_name(cb_data.status),
 			cb_data.status, rc);
-		return rc;
 	}
-	return 0;
+	return rc;
 }

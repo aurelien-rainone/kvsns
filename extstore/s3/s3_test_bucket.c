@@ -85,7 +85,9 @@ int test_bucket(const S3BucketContext *ctx,
 
 	if (cb_data.status != S3StatusOK) {
 		int rc = s3status2posix_error(cb_data.status);
-		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
+
+		LogCrit(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+			S3_get_status_name(cb_data.status),
 			cb_data.status, rc);
 		return rc;
 	}

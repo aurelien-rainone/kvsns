@@ -221,8 +221,7 @@ typedef struct multipart_part_data_ {
 	upload_mgr_t *manager;
 } multipart_part_data_t;
 
-S3Status initial_multipart_callback(const char * upload_id,
-				    void * cb_data_)
+S3Status initial_multipart_callback(const char * upload_id, void * cb_data_)
 {
 	upload_mgr_t *cb_data;
 	cb_data = (upload_mgr_t *) cb_data_;
@@ -341,8 +340,9 @@ int try_get_parts_info(const S3BucketContext *ctx,
 		if (!cb_data.num_parts)
 			print_list_multipart_hdr(cb_data.all_details);
 	} else {
-		LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s", cb_data.status,
-			S3_get_status_name(cb_data.status));
+		LogWarn(COMPONENT_EXTSTORE, "error %s s3sta=%d",
+			S3_get_status_name(cb_data.status),
+			cb_data.status);
 		return -1;
 	}
 
@@ -367,7 +367,7 @@ int put_object(const S3BucketContext *ctx,
 	if (!cb_data.infile) {
 		rc = errno;
 		LogCrit(COMPONENT_EXTSTORE,
-			"can't open stream from source file src=%s rc=%d",
+			"can't open cached file src=%s rc=%d",
 			src_file, rc);
 		return -rc;
 	}
@@ -377,7 +377,7 @@ int put_object(const S3BucketContext *ctx,
 	if (stat(src_file, &statbuf) == -1) {
 		rc = errno;
 		LogCrit(COMPONENT_EXTSTORE,
-			"can't stat source file, src=%d rc=%d",
+			"can't stat cached file, src=%d rc=%d",
 			src_file, rc);
 		return -rc;
 	}
@@ -429,11 +429,12 @@ int put_object(const S3BucketContext *ctx,
 			growbuffer_destroy(cb_data.gb);
 
 		if (final_status != S3StatusOK) {
-			LogCrit(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
-			       cb_data.status, S3_get_status_name(final_status));
+			LogCrit(COMPONENT_EXTSTORE,
+				"error single part upload %s s3sta=%d",
+				S3_get_status_name(final_status), cb_data.status);
 		} else if (cb_data.content_len) {
 			LogCrit(COMPONENT_EXTSTORE,
-				"Failed to read remaining %llu bytes from input",
+				"error single part upload, remaining %llu bytes from cached file",
 				(unsigned long long) cb_data.content_len);
 		}
 
@@ -449,7 +450,7 @@ int put_object(const S3BucketContext *ctx,
 			+ MULTIPART_CHUNK_SIZE - 1)
 				/ MULTIPART_CHUNK_SIZE;
 
-		manager.upload_id = 0;
+		manager.upload_id = NULL;
 		manager.commitstr = NULL;
 		manager.etags = (char **) malloc(sizeof(char *) * total_seq);
 		manager.next_etags_pos = 0;
@@ -492,10 +493,20 @@ int put_object(const S3BucketContext *ctx,
 			final_status = manager.status;
 		} while (should_retry(final_status, retries, interval));
 
-		if (manager.upload_id == 0 || final_status != S3StatusOK) {
-			LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
-				final_status,
-				S3_get_status_name(final_status));
+		if (manager.upload_id == NULL) {
+			final_status = S3StatusInterrupted;
+			LogWarn(COMPONENT_EXTSTORE,
+				"error initiating multipart (NULL upload_id) force error %s s3sta=%d",
+				S3_get_status_name(final_status),
+				final_status);
+			goto clean;
+		}
+
+		if (final_status != S3StatusOK) {
+			LogWarn(COMPONENT_EXTSTORE,
+				"error initiating multipart %s s3sta=%d",
+				S3_get_status_name(final_status),
+				final_status);
 			goto clean;
 		}
 
@@ -509,7 +520,7 @@ int put_object(const S3BucketContext *ctx,
 				MULTIPART_CHUNK_SIZE : content_len);
 
 			LogDebug(COMPONENT_EXTSTORE,
-				"sending part=%d partlen=%d", seq, part_content_len);
+				"sending multipart seq=%d partlen=%d", seq, part_content_len);
 			part_data.put_object_data.content_len = part_content_len;
 			part_data.put_object_data.org_content_len = part_content_len;
 			part_data.put_object_data.total_content_len = todo_content_len;
@@ -543,9 +554,10 @@ int put_object(const S3BucketContext *ctx,
 			} while (should_retry(final_status, retries, interval));
 
 			if (final_status != S3StatusOK) {
-				LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
-					final_status,
-					S3_get_status_name(final_status));
+				LogWarn(COMPONENT_EXTSTORE,
+					"error multipart upload %s seq=%d s3sta=%d",
+					S3_get_status_name(final_status),
+					seq, final_status);
 				goto clean;
 			}
 			content_len -= MULTIPART_CHUNK_SIZE;
@@ -583,10 +595,10 @@ int put_object(const S3BucketContext *ctx,
 		} while (should_retry(final_status, retries, interval));
 
 		if (final_status != S3StatusOK) {
-			LogWarn(COMPONENT_EXTSTORE, "s3rc=%d s3sta=%s",
-				final_status,
-				S3_get_status_name(final_status));
-
+			LogWarn(COMPONENT_EXTSTORE,
+				"error completing multipart upload %s s3sta=%d",
+				S3_get_status_name(final_status),
+				final_status);
 			goto clean;
 		}
 
@@ -602,8 +614,10 @@ clean:
 
 	if (final_status != S3StatusOK) {
 		int rc = s3status2posix_error(final_status);
-		LogCrit(COMPONENT_EXTSTORE, "error s3rc=%d rc=%d",
-			final_status, rc);
+		LogCrit(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+			S3_get_status_name(final_status),
+			final_status,
+			rc);
 		return rc;
 	}
 	return 0;
