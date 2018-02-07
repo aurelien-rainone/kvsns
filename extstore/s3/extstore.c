@@ -43,8 +43,8 @@ static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
 /* data cache directory */
 char data_cache_dir[MAXPATHLEN];
 
-/* file descriptors */
-GTree *fds;
+/* cached file descriptors */
+GTree *cache_fds;
 
 /* 
  * S3 request configuration, may be overriden for specific requests
@@ -90,8 +90,8 @@ int extstore_create(kvsns_ino_t object)
 		return -rc;
 	}
 
-	/* keep the file newly opened file descriptor */
-	g_tree_insert(fds, (gpointer) object, (gpointer)((gintptr) fd));
+	/* keep track of the create files */
+	g_tree_insert(cache_fds, (gpointer) object, (gpointer)((gintptr) fd));
 
 	return rc;
 }
@@ -212,7 +212,7 @@ int extstore_init(struct collection_item *cfg_items)
 	}
 
 	/* init data cache directory (create it if needed) */
-	fds = g_tree_new(key_cmp_func);
+	cache_fds = g_tree_new(key_cmp_func);
 
 	struct stat st = {0};
 	if (stat(data_cache_dir, &st) == -1) {
@@ -236,8 +236,8 @@ int extstore_fini()
 	/* release resources */
 	S3_deinitialize();
 
-	g_tree_destroy(fds);
-	fds = NULL;
+	g_tree_destroy(cache_fds);
+	cache_fds = NULL;
 
 	return 0;
 }
@@ -282,7 +282,7 @@ int extstore_write(kvsns_ino_t *ino,
 
 
 	/* retrieve file descriptor */
-	gpointer key = g_tree_lookup(fds, (gpointer) *ino);
+	gpointer key = g_tree_lookup(cache_fds, (gpointer) *ino);
 	if (key == NULL) {
 		return -ENOENT;
 	}
@@ -418,7 +418,7 @@ int extstore_close(kvsns_ino_t ino)
 		 ino, s3_path);
 
 	/* retrieve file descriptor from tree */
-	gpointer key = g_tree_lookup(fds, (gpointer) ino);
+	gpointer key = g_tree_lookup(cache_fds, (gpointer) ino);
 	if (key == NULL) {
 		return -ENOENT;
 	} else {
@@ -442,7 +442,7 @@ int extstore_close(kvsns_ino_t ino)
 	}
 
 	/* remove file descriptor from tree */
-	g_tree_remove(fds, (gpointer) ino);
+	g_tree_remove(cache_fds, (gpointer) ino);
 
 	return rc;
 }
