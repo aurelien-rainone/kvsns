@@ -51,9 +51,9 @@ typedef struct upload_mgr_{
 	int next_etags_pos;
 
 	/* used for commit Upload */
-	growbuffer_t *gb;
+	GString *commitstr;
 	int remaining;
-	int status;
+	S3Status status;
 } upload_mgr_t;
 
 typedef struct list_parts_callback_data_
@@ -171,26 +171,23 @@ S3Status list_parts_cb(int is_truncated,
 
 typedef struct put_object_callback_data_
 {
-	/*< [OUT] request status */
-	int status;
-	/*< [IN] request configuration */
-	const extstore_s3_req_cfg_t *config;
-
 	FILE *infile;
 	growbuffer_t *gb;
 	uint64_t content_len, org_content_len;
 	uint64_t total_content_len, total_org_content_len;
-	int no_status;
+	/*< [OUT] request status */
+	S3Status status;
+	/*< [IN] request configuration */
+	const extstore_s3_req_cfg_t *config;
+
 } put_object_callback_data_t;
 
-static int put_object_data_cb(int bufsize, char *buffer,
-			      void *cb_data_)
+static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 {
 	put_object_callback_data_t *cb_data =
 	(put_object_callback_data_t *) cb_data_;
 
 	int ret = 0;
-
 	if (cb_data->content_len) {
 		int to_read = ((cb_data->content_len > (unsigned) bufsize) ?
 				(unsigned) bufsize : cb_data->content_len);
@@ -203,13 +200,16 @@ static int put_object_data_cb(int bufsize, char *buffer,
 	cb_data->content_len -= ret;
 	cb_data->total_content_len -= ret;
 
-	if (cb_data->content_len && !cb_data->no_status) {
+	if (cb_data->content_len) {
 		LogDebug(COMPONENT_EXTSTORE,
-			 "%llu bytes remaining (%d%% complete) ...\n",
+			 "%llu bytes remaining (%d%% complete)",
 			 (unsigned long long) cb_data->total_content_len,
 			 (int) (((cb_data->total_org_content_len -
-			 cb_data->total_content_len) * 100) /
-			 cb_data->total_org_content_len));
+				  cb_data->total_content_len) * 100) /
+				  cb_data->total_org_content_len));
+	} else {
+		LogInfo(COMPONENT_EXTSTORE,
+			"0 bytes remaining (100%% complete) ...");
 	}
 
 	return ret;
@@ -224,16 +224,18 @@ typedef struct multipart_part_data_ {
 S3Status initial_multipart_callback(const char * upload_id,
 				    void * cb_data_)
 {
-	upload_mgr_t *mgr = (upload_mgr_t *) cb_data_;
-	mgr->upload_id = strdup(upload_id);
+	upload_mgr_t *cb_data;
+	cb_data = (upload_mgr_t *) cb_data_;
+	cb_data->upload_id = strdup(upload_id);
 	return S3StatusOK;
 }
 
-S3Status multiparts_resp_props_cb
-(const S3ResponseProperties *props, void *cb_data_)
+S3Status multiparts_resp_props_cb(const S3ResponseProperties *props,
+				  void *cb_data_)
 {
 	log_response_properties(props, cb_data_);
-	multipart_part_data_t *cb_data = (multipart_part_data_t *) cb_data;
+	multipart_part_data_t *cb_data;
+	cb_data = (multipart_part_data_t *) cb_data_;
 	int seq = cb_data->seq;
 	const char *etag = props->eTag;
 	cb_data->manager->etags[seq - 1] = strdup(etag);
@@ -277,25 +279,30 @@ void _manager_resp_complete_cb(S3Status status,
 	log_response_status_error(status, error);
 }
 
-int multipart_put_xml_cb(int bufsize, char *buffer,
-			    void *cb_data_)
+int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 {
-	upload_mgr_t *mgr = (upload_mgr_t*)cb_data_;
-	int ret = 0;
-	if (mgr->remaining) {
-		int to_read = ((mgr->remaining > bufsize) ?
-		bufsize : mgr->remaining);
-		growbuffer_read(&(mgr->gb), to_read, &ret, buffer);
+	upload_mgr_t *cb_data;
+	cb_data = (upload_mgr_t*) (cb_data_);
+	int ret;
+	if (cb_data->remaining) {
+		int to_read = ((cb_data->remaining > bufsize) ?
+				bufsize : cb_data->remaining);
+		int stridx = cb_data->commitstr->len - to_read;
+		memcpy(buffer, cb_data->commitstr->str + stridx, to_read);
+		ret = to_read;
 	}
-	mgr->remaining -= ret;
+	cb_data->remaining -= ret;
 	return ret;
 }
 
-int try_get_parts_info(const S3BucketContext *ctx, const char *key,
-		       upload_mgr_t *manager, extstore_s3_req_cfg_t *req_cfg)
+int try_get_parts_info(const S3BucketContext *ctx,
+		       const char *key,
+		       upload_mgr_t *manager,
+		       extstore_s3_req_cfg_t *req_cfg)
 {
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
+
 	S3ListPartsHandler list_parts_handler = {
 		{
 			&log_response_properties,
@@ -348,11 +355,9 @@ int put_object(const S3BucketContext *ctx,
 	       const char *src_file)
 {
 	int rc;
-	const char *upload_id = 0;
 	uint64_t content_len;
 	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
-	int final_status;
-	int no_status = 0;
+	S3Status final_status;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
@@ -367,15 +372,8 @@ int put_object(const S3BucketContext *ctx,
 		return -rc;
 	}
 
-	cb_data.gb = 0;
-	cb_data.no_status = no_status;
-	cb_data.status = S3StatusOK;
-	cb_data.config = req_cfg;
-
-	/* upload from file descriptor */
-	struct stat statbuf;
-
 	/* stat the file to get its length */
+	struct stat statbuf;
 	if (stat(src_file, &statbuf) == -1) {
 		rc = errno;
 		LogCrit(COMPONENT_EXTSTORE,
@@ -383,15 +381,17 @@ int put_object(const S3BucketContext *ctx,
 			src_file, rc);
 		return -rc;
 	}
-	content_len = statbuf.st_size;
 
+	content_len = statbuf.st_size;
 	cb_data.total_content_len = content_len;
 	cb_data.total_org_content_len = content_len;
 	cb_data.content_len = content_len;
 	cb_data.org_content_len = content_len;
+	cb_data.gb = 0;
+	cb_data.status = S3StatusOK;
+	cb_data.config = req_cfg;
 
-	S3PutProperties put_props =
-	{
+	S3PutProperties put_props = {
 		PUT_CONTENT_TYPE,
 		PUT_MD5,
 		PUT_CACHE_CONTROL,
@@ -439,18 +439,21 @@ int put_object(const S3BucketContext *ctx,
 
 	} else {
 
+		upload_mgr_t manager;
 		uint64_t total_content_len = content_len;
 		uint64_t todo_content_len = content_len;
-		upload_mgr_t manager;
-		manager.upload_id = 0;
-		manager.gb = 0;
-
-		int seq;
-		int total_seq = ((content_len + MULTIPART_CHUNK_SIZE- 1) /
-				MULTIPART_CHUNK_SIZE);
-
 		multipart_part_data_t part_data;
 		int part_content_len = 0;
+		int seq;
+		const int total_seq = (content_len
+			+ MULTIPART_CHUNK_SIZE - 1)
+				/ MULTIPART_CHUNK_SIZE;
+
+		manager.upload_id = 0;
+		manager.commitstr = NULL;
+		manager.etags = (char **) malloc(sizeof(char *) * total_seq);
+		manager.next_etags_pos = 0;
+		manager.status = S3StatusOK;
 
 		S3MultipartInitialHandler handler = {
 			{
@@ -477,9 +480,6 @@ int put_object(const S3BucketContext *ctx,
 			0
 		};
 
-		manager.etags = (char **) malloc(sizeof(char *) * total_seq);
-		manager.next_etags_pos = 0;
-		manager.status = 0;
 
 		do {
 			S3_initiate_multipart((S3BucketContext*)ctx, key, 0,
@@ -499,7 +499,6 @@ int put_object(const S3BucketContext *ctx,
 			goto clean;
 		}
 
-upload:
 		todo_content_len -= MULTIPART_CHUNK_SIZE * manager.next_etags_pos;
 		for (seq = manager.next_etags_pos + 1; seq <= total_seq; seq++) {
 			memset(&part_data, 0, sizeof(multipart_part_data_t));
@@ -519,6 +518,11 @@ upload:
 			retries = req_cfg->retries;
 			interval = req_cfg->sleep_interval;
 
+
+			/* TODO: Aurélien this is just a test for developement, we'll need to find
+			 * a value that suits all needs */
+			req_cfg->timeout = 10000000;
+
 			do {
 				S3_upload_part((S3BucketContext*)ctx,
 					       key,
@@ -534,7 +538,7 @@ upload:
 				/* Decrement retries and wait 1 second longer */
 				--retries;
 				++interval;
-				final_status = cb_data.status;
+				final_status = part_data.put_object_data.status;
 
 			} while (should_retry(final_status, retries, interval));
 
@@ -549,22 +553,16 @@ upload:
 		}
 
 		int i;
-		int size = 0;
-		size += growbuffer_append(&(manager.gb), "<CompleteMultipartUpload>",
-		strlen("<CompleteMultipartUpload>"));
-		char buf[256];
-		int n;
+		manager.commitstr = g_string_new("<CompleteMultipartUpload>");
 		for (i = 0; i < total_seq; i++) {
-			n = snprintf(buf, sizeof(buf),
-				     "<Part><PartNumber>%d</PartNumber>"
-				     "<ETag>%s</ETag></Part>",
-				     i + 1, manager.etags[i]);
-			size += growbuffer_append(&(manager.gb), buf, n);
+			g_string_append_printf(manager.commitstr,
+					       "<Part><PartNumber>%d</PartNumber>"
+					       "<ETag>%s</ETag></Part>",
+					       i + 1, manager.etags[i]);
 		}
-		size += growbuffer_append(&(manager.gb), "</CompleteMultipartUpload>",
-					  strlen("</CompleteMultipartUpload>"));
-		manager.remaining = size;
-		manager.status = 0;
+		g_string_append(manager.commitstr, "</CompleteMultipartUpload>");
+		manager.remaining = manager.commitstr->len;
+		manager.status = S3StatusOK;
 
 		do {
 			S3_complete_multipart_upload((S3BucketContext*)ctx,
@@ -597,7 +595,8 @@ clean:
 			free(manager.upload_id);
 		for (i = 0; i < manager.next_etags_pos; i++)
 			free(manager.etags[i]);
-		growbuffer_destroy(manager.gb);
+		if (manager.commitstr)
+			g_string_free(manager.commitstr, TRUE);
 		free(manager.etags);
 	}
 
