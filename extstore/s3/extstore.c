@@ -374,18 +374,32 @@ int extstore_getattr(kvsns_ino_t *ino,
 	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
 	ASSERT(s3_path[0] == '/');
 
+	/* check if a cached file descriptor exists for this inode, that would
+	 * mean we currently have the file content cached and opened, so its
+	 * content (and attrs) are changing, we can spare a remote call in that
+	 * case. Plus in case we are uploading a file that didn't exist, S3 will
+	 * report it as 'not found' (-ENOENT) until the multipart completes */
+	gpointer key = g_tree_lookup(cache_fds, (gpointer) *ino);
+	if (key != NULL) {
+		/* In that case temporarily report the attrs of the cached file.
+		 * As soon as the upload will be completed, S3 will report it
+		 * accurrately.
+		 */
+		struct stat fdsta;
+		fstat((int) ((intptr_t) key), &fdsta);
+		stat->st_size = fdsta.st_size;
+		stat->st_mtime = fdsta.st_mtime;
+		stat->st_atime = fdsta.st_atime;
+		return 0;
+	}
+
 	/* perform HEAD on S3 object*/
-	/* TODO: what happens if the object doesn't exist?
-	 * if that's the case, the return value of stats_objects
-	 * should be ENOENT, we should treat that case specifically
-	 * and zero st_size, st_mtime and st_atime.
-	 * (@see `extstore_getattr` in rados).
-	 */
 	rc = stats_object(&bucket_ctx, s3_path, &s3_req_cfg,
 			    &mtime, &size);
 
-	if (rc != 0)
+	if (rc != 0) {
 		return rc;
+	}
 
 	stat->st_size = size;
 	stat->st_mtime = mtime;
@@ -397,9 +411,25 @@ int extstore_getattr(kvsns_ino_t *ino,
 int extstore_open(kvsns_ino_t ino,
 		  int flags)
 {
-	char strflags[1024] = "\0";
-	LogDebug(COMPONENT_EXTSTORE, "ino=%d flags=o%o", ino, flags);
-	LogDebug(COMPONENT_EXTSTORE, "flags=%s", printf_open_flags(strflags, flags, 1024));
+	char strflags[1024] = "";
+
+	/* check if create has been called on this file */
+	gpointer key = g_tree_lookup(cache_fds, (gpointer) ino);
+	if (key == NULL) {
+		/* didn't pass by create before open, we probably want to read
+		 * that file */
+		LogDebug(COMPONENT_EXTSTORE,
+			"opening in order to read? ino=%d flags=o%o flagsstr=%s", ino, flags,
+			 printf_open_flags(strflags, flags, 1024));
+		return -ENOENT;
+	} else {
+
+		/* found a file descriptor */
+		LogDebug(COMPONENT_EXTSTORE,
+			"opening in order to write/upload? ino=%d flags=o%o flagsstr=%s", ino, flags,
+			 printf_open_flags(strflags, flags, 1024));
+	}
+
 	return 0;
 }
 
