@@ -82,19 +82,22 @@ int kvsal_init(struct collection_item *cfg_items)
 	if (rediscontext == NULL || rediscontext->err) {
 		if (rediscontext) {
 			fprintf(stderr,
-				"Connection error: %s\n", rediscontext->errstr);
+				"Redis connection error: %s\n", rediscontext->errstr);
 			redisFree(rediscontext);
 		} else {
 			fprintf(stderr,
-				"Connection error: can't get redis context\n");
+				"Redis connection error: can't get context\n");
 		}
 		exit(1);
 	}
 
 	/* PING server */
 	reply = redisCommand(rediscontext, "PING");
-	if (!reply)
+	if (!reply) {
+		fprintf(stderr,
+			"Can't ping redis server\n");
 		return -1;
+	}
 
 	freeReplyObject(reply);
 

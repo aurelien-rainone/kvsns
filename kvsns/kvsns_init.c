@@ -55,15 +55,22 @@ int kvsns_start(const char *configpath)
 	rc = config_from_file("libkvsns", configpath, &cfg_items,
 			      INI_STOP_ON_ERROR, &errors);
 	if (rc) {
-		fprintf(stderr, "Can't load config rc=%d\n", rc);
-
+		LogCrit(COMPONENT_KVSNS, "Can't load config rc=%d", rc);
 		free_ini_config_errors(errors);
 		return -rc;
 	}
 
-	RC_WRAP(kvsal_init, cfg_items);
+	rc = kvsal_init(cfg_items);
+	if (rc != 0) {
+		LogCrit(COMPONENT_KVSNS, "Can't init kvsal");
+		return rc;
+	}
 
-	RC_WRAP(extstore_init, cfg_items);
+	rc = extstore_init(cfg_items);
+	if (rc != 0) {
+		LogCrit(COMPONENT_KVSNS, "Can't init extstore");
+		return rc;
+	}
 
 	/** @todo : remove all existing opened FD (crash recovery) */
 	return 0;
