@@ -40,11 +40,18 @@ static char bucket[S3_MAX_BUCKET_NAME_SIZE];
 static char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
 static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
 
-/* data cache directory */
-char data_cache_dir[MAXPATHLEN];
+/* We manage 2 different and compartmented data caches:
+ *
+ * The first for files we are currently uploading to S3. We write the data in a
+ * local directory, in a file named after the file inode. We start uploading it
+ * only after having received extstore_close. That's when we remove it the
+ * cached file and its entry in written_fds tree.
+ */
 
-/* cached file descriptors */
-GTree *cache_fds;
+/* cache directory (read and write) */
+char cache_dir[MAXPATHLEN];
+
+GTree *written_fds;			/* written file descriptors */
 
 /* 
  * S3 request configuration, may be overriden for specific requests
@@ -52,12 +59,6 @@ GTree *cache_fds;
 extstore_s3_req_cfg_t s3_req_cfg;
 
 int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname);
-
-int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
-
-int build_datacache_path(kvsns_ino_t object,
-			 char *data_cache_path,
-			 size_t pathlen);
 
 int extstore_create(kvsns_ino_t object)
 {
@@ -67,17 +68,17 @@ int extstore_create(kvsns_ino_t object)
 	char cache_path[MAXPATHLEN];
 
 	build_s3_path(object, s3_path, S3_MAX_KEY_SIZE);
-	build_datacache_path(object, cache_path, MAXPATHLEN);
+	build_cache_path(object, cache_path, write_cache_t, MAXPATHLEN);
 
 	LogDebug(COMPONENT_EXTSTORE, "ino=%llu path=%s cache=%s", object, s3_path, cache_path);
 
 	/* for safety, remove the cache file and start anew */
 	rc = remove(cache_path);
 	if (rc < 0) {
-		rc = errno;
-		if (rc != ENOENT) {
+		rc = -errno;
+		if (rc != -ENOENT) {
 			/* we have a real error */
-			return -rc;
+			return rc;
 		}
 		/* reset return code */
 		rc = 0;
@@ -86,14 +87,14 @@ int extstore_create(kvsns_ino_t object)
 	/* create the cache entry */
 	fd = creat(cache_path, O_RDONLY);
 	if (fd < 0) {
-		rc = errno;
-		return -rc;
+		rc = -errno;
+		return rc;
 	}
 
-	/* keep track of the create files */
-	g_tree_insert(cache_fds, (gpointer) object, (gpointer)((gintptr) fd));
+	/* keep track of the created file */
+	g_tree_insert(written_fds, (gpointer) object, (gpointer)((gintptr) fd));
 
-	return rc;
+	return 0;
 }
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
@@ -130,7 +131,7 @@ int extstore_init(struct collection_item *cfg_items)
 		return -rc;
 	if (item == NULL)
 		return -EINVAL;
-	strncpy(data_cache_dir, get_string_config_value(item, NULL),
+	strncpy(cache_dir, get_string_config_value(item, NULL),
 		MAXPATHLEN);
 
 	/* Allocate the S3 bucket context */
@@ -212,17 +213,17 @@ int extstore_init(struct collection_item *cfg_items)
 	}
 
 	/* init data cache directory (create it if needed) */
-	cache_fds = g_tree_new(key_cmp_func);
+	written_fds = g_tree_new(key_cmp_func);
 
 	struct stat st = {0};
-	if (stat(data_cache_dir, &st) == -1) {
+	if (stat(cache_dir, &st) == -1) {
 
-		if (mkdir(data_cache_dir, 0700) < 0) {
-			rc = errno;
+		if (mkdir(cache_dir, 0700) < 0) {
+			rc = -errno;
 			LogCrit(COMPONENT_EXTSTORE,
 				"Can't create data cache directory dir=%s rc=%d",
-				data_cache_dir, rc);
-			return -rc;
+				cache_dir, rc);
+			return rc;
 		}
 	}
 
@@ -236,8 +237,8 @@ int extstore_fini()
 	/* release resources */
 	S3_deinitialize();
 
-	g_tree_destroy(cache_fds);
-	cache_fds = NULL;
+	g_tree_destroy(written_fds);
+	written_fds = NULL;
 
 	return 0;
 }
@@ -275,22 +276,22 @@ int extstore_write(kvsns_ino_t *ino,
 	char cache_path[MAXPATHLEN];
 
 	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
-	build_datacache_path(*ino, cache_path, MAXPATHLEN);
+	build_cache_path(*ino, cache_path, write_cache_t, MAXPATHLEN);
 
 	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
 		 *ino, offset, buffer_size, s3_path, stat->st_size, cache_path);
 
 
 	/* retrieve file descriptor */
-	gpointer key = g_tree_lookup(cache_fds, (gpointer) *ino);
+	gpointer key = g_tree_lookup(written_fds, (gpointer) *ino);
 	if (key == NULL) {
 		return -ENOENT;
 	}
 	bytes_written = pwrite((int) ((intptr_t) key), buffer, buffer_size, offset);
 	if (bytes_written == -1) {
-		rc = errno;
+		rc = -errno;
 		LogDebug(COMPONENT_EXTSTORE, "error pwrite, errno=%d", rc);
-		return -rc;
+		return rc;
 	}
 
 	return bytes_written;
@@ -379,7 +380,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	 * content (and attrs) are changing, we can spare a remote call in that
 	 * case. Plus in case we are uploading a file that didn't exist, S3 will
 	 * report it as 'not found' (-ENOENT) until the multipart completes */
-	gpointer key = g_tree_lookup(cache_fds, (gpointer) *ino);
+	gpointer key = g_tree_lookup(written_fds, (gpointer) *ino);
 	if (key != NULL) {
 		/* In that case temporarily report the attrs of the cached file.
 		 * As soon as the upload will be completed, S3 will report it
@@ -413,8 +414,8 @@ int extstore_open(kvsns_ino_t ino,
 {
 	char strflags[1024] = "";
 
-	/* check if create has been called on this file */
-	gpointer key = g_tree_lookup(cache_fds, (gpointer) ino);
+	/* check if an entry has been added in the write cache */
+	gpointer key = g_tree_lookup(written_fds, (gpointer) ino);
 	if (key == NULL) {
 		/* didn't pass by create before open, we probably want to read
 		 * that file */
@@ -438,41 +439,44 @@ int extstore_close(kvsns_ino_t ino)
 	int rc;
 	int fd;
 	char s3_path[S3_MAX_KEY_SIZE];
-	char cache_path[MAXPATHLEN];
+	char write_cache_path[MAXPATHLEN];
 
 	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
-	build_datacache_path(ino, cache_path, MAXPATHLEN);
+	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
 
 	LogDebug(COMPONENT_EXTSTORE,
 		 "ino=%d s3key=%s",
 		 ino, s3_path);
 
-	/* retrieve file descriptor from tree */
-	gpointer key = g_tree_lookup(cache_fds, (gpointer) ino);
+	/* was this file in the write cache? */
+	gpointer key = g_tree_lookup(written_fds, (gpointer) ino);
 	if (key == NULL) {
 		return -ENOENT;
 	} else {
+		/* this file is in the write cache, close it */
 		fd = (int) ((intptr_t) key);
 		rc = close(fd);
 		if (rc == -1) {
-			rc = errno;
+			rc = -errno;
 			LogDebug(COMPONENT_EXTSTORE,
 				 "error closing file descriptor, fd=%d errno=%d",
 				 fd, rc);
+			goto cleanup_write_cache;
 		}
-	}
 
-	/* upload file */
-	rc = put_object(&bucket_ctx, s3_path, &s3_req_cfg, cache_path);
-	if (rc != 0) {
-		LogWarn(COMPONENT_EXTSTORE,
-			 "couldn't upload file ino=%d s3key=%s fd=%d",
-			 ino, s3_path, fd);
-		return rc;
-	}
+		/* upload file */
+		rc = put_object(&bucket_ctx, s3_path, &s3_req_cfg, write_cache_path);
+		if (rc != 0) {
+			LogWarn(COMPONENT_EXTSTORE,
+				 "couldn't upload file ino=%d s3key=%s fd=%d",
+				 ino, s3_path, fd);
+			return rc;
+		}
 
-	/* remove file descriptor from tree */
-	g_tree_remove(cache_fds, (gpointer) ino);
+cleanup_write_cache:
+		/* remove file descriptor from tree */
+		g_tree_remove(written_fds, (gpointer) ino);
+	}
 
 	return rc;
 }
@@ -539,11 +543,14 @@ int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
 	return 0;
 }
 
-int build_datacache_path(kvsns_ino_t object,
-			 char *data_cache_path,
-			 size_t pathlen)
+int build_cache_path(kvsns_ino_t object,
+		     char *data_cache_path,
+		     cache_t cache_type,
+		     size_t pathlen)
 {
-	return snprintf(data_cache_path, pathlen, "%s/%llu",
-			data_cache_dir, (unsigned long long)object);
+	return snprintf(data_cache_path, pathlen,
+			"%s/%c%llu",
+			cache_dir,
+			(cache_type == read_cache_t)? 'r':'w',
+			(unsigned long long)object);
 }
-

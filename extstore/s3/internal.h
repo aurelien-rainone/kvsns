@@ -130,18 +130,23 @@ void prepend(char* s, const char* t);
  */
 int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
 
+
+typedef enum cache_ { read_cache_t, write_cache_t } cache_t;
+
 /**
  * Build path of data cache file for a given inode.
  *
  * @param object - object inode.
  * @param datacache_path - [OUT] data cache file path
+ * @param read - [IN] read or write cache
  * @param pathlen - [IN] max path length
- * 
+ *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int build_datacache_path(kvsns_ino_t object,
-			 char *data_cache_path,
-			 size_t pathlen);
+int build_cache_path(kvsns_ino_t object,
+		     char *data_cache_path,
+		     cache_t cache_type,
+		     size_t pathlen);
 
 char* printf_open_flags(char *dst, int flags, const size_t len);
 
