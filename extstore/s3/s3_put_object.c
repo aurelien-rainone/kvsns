@@ -311,7 +311,6 @@ int try_get_parts_info(const S3BucketContext *ctx,
 	};
 
 	list_parts_callback_data_t cb_data;
-
 	memset(&cb_data, 0, sizeof(list_parts_callback_data_t));
 
 	cb_data.num_parts = 0;

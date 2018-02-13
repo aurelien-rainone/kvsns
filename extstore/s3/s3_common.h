@@ -40,10 +40,10 @@
 /**
  * Test bucket existence/access.
  *
- * @param ctx - libs3 bucket context.
- * @param req_cfg - config for this request.
+ * @param ctx - [IN] libs3 bucket context.
+ * @param req_cfg - [IN] config for this request.
  *
- * @return 0 if successful, a negative posix error code in case of error.
+ * @return 0 on success, a negative posix error code in case of error.
  */
 int test_bucket(const S3BucketContext *ctx,
 		extstore_s3_req_cfg_t *req_cfg);
@@ -51,20 +51,31 @@ int test_bucket(const S3BucketContext *ctx,
 /**
  * Request S3 object stat.
  *
- * @param ctx - libs3 bucket context.
- * @param key - object key.
- * @param req_cfg - config for this request.
+ * @param ctx - [IN] libs3 bucket context.
+ * @param key - [IN] object key.
+ * @param req_cfg - [IN] config for this request.
  * @param mtime - [OUT] object mtime
  * @param size - [OUT] object size
  *
- * @return a negative posix error code in case of error, a positive value
- *   represents the number of bytes actually received from S3, 0 meaning all bytes
- *   requested have been received.
+ * @return 0 on success, a negative posix error code in case of error.
  */
 int stats_object(const S3BucketContext *ctx, const char *key,
 		 extstore_s3_req_cfg_t *req_cfg,
 		 time_t *mtime, uint64_t *size);
 
+/**
+ * Upload a file to S3.
+ *
+ * Depending on the file length, the file will be sent as a single POST request
+ * or a serie of chunks (multipart).
+ *
+ * @param ctx - [IN] libs3 bucket context.
+ * @param key - [IN] object key.
+ * @param req_cfg - [IN] config for this request.
+ * @param src_file - [IN] path of the file to read and send.
+ *
+ * @return 0 on success, a negative posix error code in case of error.
+ */
 int put_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg,

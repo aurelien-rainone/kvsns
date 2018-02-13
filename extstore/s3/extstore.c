@@ -33,28 +33,36 @@
 #include "s3_common.h"
 
 
-/* S3 bucket configuration */
+/* s3 bucket configuration */
 static S3BucketContext bucket_ctx;
 static char host[S3_MAX_HOSTNAME_SIZE];
 static char bucket[S3_MAX_BUCKET_NAME_SIZE];
 static char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
 static char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
 
-/* We manage 2 different and compartmented data caches:
- *
- * The first for files we are currently uploading to S3. We write the data in a
- * local directory, in a file named after the file inode. We start uploading it
- * only after having received extstore_close. That's when we remove it the
- * cached file and its entry in written_fds tree.
+/* Inode cache management is split in 2 non intersecting caches, one for the
+ * downloaded inodes and the other for the inodes to upload.
  */
 
-/* cache directory (read and write) */
-char cache_dir[MAXPATHLEN];
+/* Inode cache directory (read and write). Cached files are named after the
+ * inode number they represent, preceded by the letter 'w' or 'r', depending on
+ * the type of inode cache they are in */
+char ino_cache_dir[MAXPATHLEN];
 
-GTree *written_fds;			/* written file descriptors */
+/* `wino_cache`, for 'written inode cache', is only used to upload
+ * new files to s3. After the creation of a new inode and until the reception of
+ * close, all successive write operations on this inode are performed on the
+ * local filesystem and thus do not involve networking. It's only when NFS
+ * requests the file closure that we start transfering the file to stable
+ * storage. When the transfer is complete the locally cached inode becomes
+ * useless and can safely be deleted.
+ *
+ * wino_cache is a tree in which keys are inodes and values are file descriptors
+ * of the cached files, on which `pwrite` can be called */
+GTree *wino_cache;
 
-/* 
- * S3 request configuration, may be overriden for specific requests
+/*
+ * s3 request configuration, may be overriden for specific requests
  */
 extstore_s3_req_cfg_t s3_req_cfg;
 
@@ -92,14 +100,14 @@ int extstore_create(kvsns_ino_t object)
 	}
 
 	/* keep track of the created file */
-	g_tree_insert(written_fds, (gpointer) object, (gpointer)((gintptr) fd));
+	g_tree_insert(wino_cache, (gpointer) object, (gpointer)((gintptr) fd));
 
 	return 0;
 }
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 {
-	/* XXX Look into another way of adding S3 specific keys in the KVS, the
+	/* XXX Look into another way of adding s3 specific keys in the KVS, the
 	 * inode.name entry. Couldn't this call to extstore_attach be the
 	 * perfect occastion to add those keys. If that is the case, this would
 	 * be way cleaner than modifying the libkvsns code and guarding the code
@@ -125,16 +133,16 @@ int extstore_init(struct collection_item *cfg_items)
 	RC_WRAP(kvsal_init, cfg_items);
 
 	/* read location of data cache directory */
-	rc = get_config_item("s3", "data_cache_dir",
+	rc = get_config_item("s3", "data_ino_cache_dir",
 			      cfg_items, &item);
 	if (rc != 0)
 		return -rc;
 	if (item == NULL)
 		return -EINVAL;
-	strncpy(cache_dir, get_string_config_value(item, NULL),
+	strncpy(ino_cache_dir, get_string_config_value(item, NULL),
 		MAXPATHLEN);
 
-	/* Allocate the S3 bucket context */
+	/* Allocate the s3 bucket context */
 	memset(&bucket_ctx, 0, sizeof(S3BucketContext));
 
 	/* Get config from ini file */
@@ -196,7 +204,7 @@ int extstore_init(struct collection_item *cfg_items)
 	if (s3_status != S3StatusOK)
 		return s3status2posix_error(s3_status);
 
-	/* Initialize S3 request config */
+	/* Initialize s3 request config */
 	memset(&s3_req_cfg, 0, sizeof(extstore_s3_req_cfg_t));
 	s3_req_cfg.retries = S3_REQ_DEFAULT_RETRIES;
 	s3_req_cfg.sleep_interval = S3_REQ_DEFAULT_SLEEP_INTERVAL;
@@ -212,17 +220,17 @@ int extstore_init(struct collection_item *cfg_items)
 		return -rc;
 	}
 
-	/* init data cache directory (create it if needed) */
-	written_fds = g_tree_new(key_cmp_func);
+	/* init data caches structures and create cache directory if needed */
+	wino_cache = g_tree_new(key_cmp_func);
 
 	struct stat st = {0};
-	if (stat(cache_dir, &st) == -1) {
+	if (stat(ino_cache_dir, &st) == -1) {
 
-		if (mkdir(cache_dir, 0700) < 0) {
+		if (mkdir(ino_cache_dir, 0700) < 0) {
 			rc = -errno;
 			LogCrit(COMPONENT_EXTSTORE,
 				"Can't create data cache directory dir=%s rc=%d",
-				cache_dir, rc);
+				ino_cache_dir, rc);
 			return rc;
 		}
 	}
@@ -237,8 +245,9 @@ int extstore_fini()
 	/* release resources */
 	S3_deinitialize();
 
-	g_tree_destroy(written_fds);
-	written_fds = NULL;
+	/* destroy cache data structures */
+	g_tree_destroy(wino_cache);
+	wino_cache = NULL;
 
 	return 0;
 }
@@ -283,7 +292,7 @@ int extstore_write(kvsns_ino_t *ino,
 
 
 	/* retrieve file descriptor */
-	gpointer key = g_tree_lookup(written_fds, (gpointer) *ino);
+	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
 	if (key == NULL) {
 		return -ENOENT;
 	}
@@ -378,12 +387,12 @@ int extstore_getattr(kvsns_ino_t *ino,
 	/* check if a cached file descriptor exists for this inode, that would
 	 * mean we currently have the file content cached and opened, so its
 	 * content (and attrs) are changing, we can spare a remote call in that
-	 * case. Plus in case we are uploading a file that didn't exist, S3 will
+	 * case. Plus in case we are uploading a file that didn't exist, s3 will
 	 * report it as 'not found' (-ENOENT) until the multipart completes */
-	gpointer key = g_tree_lookup(written_fds, (gpointer) *ino);
+	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
 	if (key != NULL) {
 		/* In that case temporarily report the attrs of the cached file.
-		 * As soon as the upload will be completed, S3 will report it
+		 * As soon as the upload will be completed, s3 will report it
 		 * accurrately.
 		 */
 		struct stat fdsta;
@@ -394,7 +403,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 		return 0;
 	}
 
-	/* perform HEAD on S3 object*/
+	/* perform HEAD on s3 object*/
 	rc = stats_object(&bucket_ctx, s3_path, &s3_req_cfg,
 			    &mtime, &size);
 
@@ -415,7 +424,7 @@ int extstore_open(kvsns_ino_t ino,
 	char strflags[1024] = "";
 
 	/* check if an entry has been added in the write cache */
-	gpointer key = g_tree_lookup(written_fds, (gpointer) ino);
+	gpointer key = g_tree_lookup(wino_cache, (gpointer) ino);
 	if (key == NULL) {
 		/* didn't pass by create before open, we probably want to read
 		 * that file */
@@ -449,7 +458,7 @@ int extstore_close(kvsns_ino_t ino)
 		 ino, s3_path);
 
 	/* was this file in the write cache? */
-	gpointer key = g_tree_lookup(written_fds, (gpointer) ino);
+	gpointer key = g_tree_lookup(wino_cache, (gpointer) ino);
 	if (key == NULL) {
 		return -ENOENT;
 	} else {
@@ -475,22 +484,22 @@ int extstore_close(kvsns_ino_t ino)
 
 cleanup_write_cache:
 		/* remove file descriptor from tree */
-		g_tree_remove(written_fds, (gpointer) ino);
+		g_tree_remove(wino_cache, (gpointer) ino);
 	}
 
 	return rc;
 }
 
 /**
- * Build path of S3 Object and return object directory and filename.
+ * Build path of s3 object and return object directory and filename.
  *
  * @param object - object inode.
- * @param obj_dir - [OUT] full S3 directory path.
- * @param obj_fname - [OUT] S3 object filename, empty for a directory.
+ * @param obj_dir - [OUT] full s3 directory path.
+ * @param obj_fname - [OUT] s3 object filename, empty for a directory.
  *
  * @note Returned directory path doesn't start with a '/' as libs3 requires
  * object keys to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a S3
+ * However directory paths are returned with a trailing '/', this is a s3
  * requirement.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
@@ -550,7 +559,7 @@ int build_cache_path(kvsns_ino_t object,
 {
 	return snprintf(data_cache_path, pathlen,
 			"%s/%c%llu",
-			cache_dir,
+			ino_cache_dir,
 			(cache_type == read_cache_t)? 'r':'w',
 			(unsigned long long)object);
 }

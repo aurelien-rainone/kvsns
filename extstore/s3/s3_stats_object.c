@@ -30,12 +30,12 @@
 
 
 struct _resp_cb_data_t {
-	time_t mtime;		/*< [OUT mtime to be by callback */
+	time_t mtime;		/*< [OUT] mtime to be by callback */
 	uint64_t size;		/*< [OUT] size to be by callback */
 	int status;		/*< [OUT] request status */
 };
 
-S3Status _resp_props_cb(const S3ResponseProperties *props,
+static S3Status _resp_props_cb(const S3ResponseProperties *props,
 		       void *cb_data_)
 {
 	struct _resp_cb_data_t *cb_data;
@@ -46,14 +46,14 @@ S3Status _resp_props_cb(const S3ResponseProperties *props,
 	cb_data->mtime = (time_t) props->lastModified;
 	cb_data->size = (uint64_t) props->contentLength;
 
-	LogDebug(COMPONENT_EXTSTORE, "set_stats=1 mtime=%lu size=%lu",
+	LogDebug(COMPONENT_EXTSTORE, "mtime=%lu size=%lu",
 		 cb_data->mtime,
 		 cb_data->size);
 
 	return S3StatusOK;
 }
 
-void _resp_complete_cb(S3Status status,
+static void _resp_complete_cb(S3Status status,
 		      const S3ErrorDetails *error,
 		      void *cb_data_)
 {
