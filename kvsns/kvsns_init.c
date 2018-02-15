@@ -50,7 +50,7 @@ int kvsns_start(const char *configpath)
 	struct collection_item *errors = NULL;
 	int rc;
 
-	LogDebug(COMPONENT_KVSNS, "--- Starting kvsns ---");
+	LogInfo(COMPONENT_KVSNS, "--- Starting kvsns ---");
 
 	rc = config_from_file("libkvsns", configpath, &cfg_items,
 			      INI_STOP_ON_ERROR, &errors);

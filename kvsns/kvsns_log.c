@@ -45,6 +45,15 @@ struct log_component_info {
 	const char *comp_str;	/* shorter, more useful name */
 };
 
+log_levels_t default_log_levels[] = {
+	[COMPONENT_ALL] = LVL_NULL,
+	[COMPONENT_KVSNS] = LVL_INFO,
+	[COMPONENT_KVSAL] = LVL_INFO,
+	[COMPONENT_EXTSTORE] = LVL_INFO,
+};
+
+log_levels_t *component_log_level = default_log_levels;
+
 static log_level_t tabLogLevel[] = {
 	[LVL_NULL] = {"LVL_NULL", "NULL", LOG_NOTICE},
 	[LVL_FATAL] = {"LVL_FATAL", "FATAL", LOG_CRIT},
@@ -58,9 +67,6 @@ struct log_component_info LogComponents[COMPONENT_COUNT] = {
 	[COMPONENT_ALL] = {
 		.comp_name = "COMPONENT_ALL",
 		.comp_str = "",},
-	[COMPONENT_LOG] = {
-		.comp_name = "COMPONENT_LOG",
-		.comp_str = "LOG",},
 	[COMPONENT_KVSNS] = {
 		.comp_name = "COMPONENT_KVSNS",
 		.comp_str = "KVSNS",},
@@ -78,8 +84,6 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 			      char *function, log_levels_t level, char *format,
 			      ...)
 {
-	/*TODO: add a current log level variable and only log if necessary */
-
 	va_list arguments;
 	va_start(arguments, format);
 
@@ -104,3 +108,40 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 	if (level == LVL_FATAL)
 		exit(2);
 }
+
+int parse_log_level(const char * strlevel, log_levels_t *lvl)
+{
+	if (strlevel && lvl) {
+		if (!strcmp(strlevel, "NULL")) {
+			*lvl = LVL_NULL;
+			return 0;
+		}
+		if (!strcmp(strlevel, "FATAL")) {
+			*lvl = LVL_FATAL;
+			return 0;
+		}
+		if (!strcmp(strlevel, "CRIT")) {
+			*lvl = LVL_CRIT;
+			return 0;
+		}
+		if (!strcmp(strlevel, "WARN")) {
+			*lvl = LVL_WARN;
+			return 0;
+		}
+		if (!strcmp(strlevel, "INFO")) {
+			*lvl = LVL_INFO;
+			return 0;
+		}
+		if (!strcmp(strlevel, "DEBUG")) {
+			*lvl = LVL_DEBUG;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+void set_log_level(log_components_t component, log_levels_t lvl)
+{
+	component_log_level[component] = lvl;
+}
+

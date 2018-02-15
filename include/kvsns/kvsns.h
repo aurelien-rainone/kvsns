@@ -106,6 +106,8 @@ typedef enum log_levels {
 	NB_LOG_LEVEL
 } log_levels_t;
 
+extern log_levels_t *component_log_level;
+
 /*
  * Log components used throughout the code.
  */
@@ -120,39 +122,71 @@ typedef enum log_components {
 	COMPONENT_COUNT
 } log_components_t;
 
+/* Parse strlevel into its corresponding integer value.
+ * Returns 0 on success, -1 on error */
+int parse_log_level(const char * strlevel, log_levels_t *lvl);
+
+/* Set the log level of given component. */
+void set_log_level(log_components_t component, log_levels_t lvl);
+
 void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 			      char *function, log_levels_t level, char *format,
 			      ...);
 
 #define LogFatal(component, format, args...) \
-	LogWithComponentAndLevel(component, (char *) __FILE__,\
-				 __LINE__, \
-				 (char *) __func__, \
-				 LVL_FATAL, format, ## args);
+	do { \
+		if (component_log_level[component] \
+		    >= LVL_FATAL) \
+			LogWithComponentAndLevel(component, \
+						(char *) __FILE__,\
+						__LINE__, \
+						(char *) __func__, \
+						LVL_FATAL, format, ## args); \
+	} while (0)
 
 #define LogCrit(component, format, args...) \
-	LogWithComponentAndLevel(component, (char *) __FILE__,\
-				 __LINE__, \
-				 (char *) __func__, \
-				 LVL_CRIT, format, ## args);
+	do { \
+		if (component_log_level[component] \
+		    >= LVL_CRIT) \
+			LogWithComponentAndLevel(component, \
+						(char *) __FILE__,\
+						__LINE__, \
+						(char *) __func__, \
+						LVL_CRIT, format, ## args); \
+	} while (0)
 
 #define LogWarn(component, format, args...) \
-	LogWithComponentAndLevel(component, (char *) __FILE__,\
-				 __LINE__, \
-				 (char *) __func__, \
-				 LVL_WARN, format, ## args);
+	do { \
+		if (component_log_level[component] \
+		    >= LVL_WARN) \
+			LogWithComponentAndLevel(component, \
+						(char *) __FILE__,\
+						__LINE__, \
+						(char *) __func__, \
+						LVL_WARN, format, ## args); \
+	} while (0)
+
 #define LogInfo(component, format, args...) \
-	LogWithComponentAndLevel(component, (char *) __FILE__,\
-				 __LINE__, \
-				 (char *) __func__, \
-				 LVL_INFO, format, ## args);
+	do { \
+		if (component_log_level[component] \
+		    >= LVL_INFO) \
+			LogWithComponentAndLevel(component, \
+						(char *) __FILE__,\
+						__LINE__, \
+						(char *) __func__, \
+						LVL_INFO, format, ## args); \
+	} while (0)
 
 #define LogDebug(component, format, args...) \
-	LogWithComponentAndLevel(component, (char *) __FILE__,\
-				 __LINE__, \
-				 (char *) __func__, \
-				 LVL_DEBUG, format, ## args);
-
+	do { \
+		if (component_log_level[component] \
+		    >= LVL_DEBUG) \
+			LogWithComponentAndLevel(component, \
+						(char *) __FILE__,\
+						__LINE__, \
+						(char *) __func__, \
+						LVL_DEBUG, format, ## args); \
+	} while (0)
 
 /* KVSAL related definitions and functions */
 

@@ -94,14 +94,34 @@ int extstore_init(struct collection_item *cfg_items)
 	S3Status s3_status;
 	struct collection_item *item;
 
-	LogDebug(COMPONENT_EXTSTORE, "initialising s3 store");
+	LogInfo(COMPONENT_EXTSTORE, "initialising s3 store");
 
 	if (cfg_items == NULL)
 		return -EINVAL;
 
 	RC_WRAP(kvsal_init, cfg_items);
 
+	/* set log level from inifile */
+	item = NULL;
+	rc = get_config_item("s3", "log_level",
+			      cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL) {
+	    char strlvl[64];
+	    log_levels_t lvl;
+	    strncpy(strlvl, get_string_config_value(item, NULL), 64);
+	    rc = parse_log_level(strlvl, &lvl);
+	    if (!rc) {
+		LogInfo(COMPONENT_EXTSTORE, "setting log level to %s", strlvl);
+		set_log_level(COMPONENT_EXTSTORE, lvl);
+	    } else
+		LogWarn(COMPONENT_EXTSTORE,
+			"Can't parse log level, default unchanged");
+	}
+
 	/* read location of data cache directory */
+	item = NULL;
 	rc = get_config_item("s3", "ino_cache_dir",
 			      cfg_items, &item);
 	if (rc != 0)
@@ -114,7 +134,7 @@ int extstore_init(struct collection_item *cfg_items)
 	/* Allocate the s3 bucket context */
 	memset(&bucket_ctx, 0, sizeof(S3BucketContext));
 
-	/* Get config from ini file */
+	/* Get s3 config from ini file */
 	item = NULL;
 	rc = get_config_item("s3", "host",
 			      cfg_items, &item);
@@ -241,7 +261,7 @@ int extstore_fini()
 
 int extstore_del(kvsns_ino_t *ino)
 {
-	LogDebug(COMPONENT_EXTSTORE, "not implemented yet ino=%llu", *ino)
+	LogDebug(COMPONENT_EXTSTORE, "not implemented yet ino=%llu", *ino);
 	return 0;
 }
 
