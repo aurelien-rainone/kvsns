@@ -49,7 +49,8 @@ char access_key[S3_MAX_ACCESS_KEY_ID_SIZE] = "";
 char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE] = "";
 
 /*
- * s3 default request configuration, may be overriden for specific requests.
+ * s3 default request configuration, inifile configurable, specific requests may
+ * override it.
  */
 extstore_s3_req_cfg_t def_s3_req_cfg = {};
 
@@ -565,8 +566,17 @@ int wino_close(kvsns_ino_t ino)
 	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
 	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
 
+	/* override default s3 request config */
+	extstore_s3_req_cfg_t put_req_cfg;
+	memcpy(&put_req_cfg, &def_s3_req_cfg, sizeof(put_req_cfg));
+	put_req_cfg.retries = 3;
+	put_req_cfg.sleep_interval = 1;
+	/* for multipart, it's the timeout for the transfer of one part, it's
+	 * reset after each part */
+	put_req_cfg.timeout = 5 * 60 * 1000; /* 5Min*/
+
 	/* transfer file to stable storage */
-	rc = put_object(&bucket_ctx, s3_path, &def_s3_req_cfg, write_cache_path);
+	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
 	if (rc != 0) {
 		LogWarn(COMPONENT_EXTSTORE,
 			 "couldn't upload file ino=%d s3key=%s fd=%d",

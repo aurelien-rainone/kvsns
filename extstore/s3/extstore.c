@@ -142,7 +142,6 @@ int extstore_init(struct collection_item *cfg_items)
 		return -rc;
 	if (item == NULL)
 		return -EINVAL;
-
 	strncpy(host, get_string_config_value(item, NULL),
 		S3_MAX_HOSTNAME_SIZE);
 
@@ -193,12 +192,34 @@ int extstore_init(struct collection_item *cfg_items)
 	if (s3_status != S3StatusOK)
 		return s3status2posix_error(s3_status);
 
-	/* Initialize s3 request config */
-	memset(&def_s3_req_cfg, 0, sizeof(extstore_s3_req_cfg_t));
+	/* Initialize default s3 request config */
 	def_s3_req_cfg.retries = S3_REQ_DEFAULT_RETRIES;
-	def_s3_req_cfg.sleep_interval = S3_REQ_DEFAULT_SLEEP_INTERVAL;
 	def_s3_req_cfg.timeout = S3_REQ_DEFAULT_TIMEOUT;
-	def_s3_req_cfg.log_props = 1;
+	def_s3_req_cfg.sleep_interval = S3_REQ_DEFAULT_SLEEP_INTERVAL;
+
+	item = NULL;
+	rc = get_config_item("s3", "req_timeout", cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL)
+	    def_s3_req_cfg.timeout =
+		    get_int_config_value(item, 0, S3_REQ_DEFAULT_TIMEOUT, NULL);
+
+	item = NULL;
+	rc = get_config_item("s3", "req_max_retries", cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL)
+	    def_s3_req_cfg.retries =
+		    get_int_config_value(item, 1, S3_REQ_DEFAULT_RETRIES, NULL);
+
+	item = NULL;
+	rc = get_config_item("s3", "req_sleep_interval", cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL)
+	    def_s3_req_cfg.sleep_interval =
+		    get_int_config_value(item, 1, S3_REQ_DEFAULT_SLEEP_INTERVAL, NULL);
 
 	/* check we can actually access the bucket */
 	rc = test_bucket(&bucket_ctx, &def_s3_req_cfg);

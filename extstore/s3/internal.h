@@ -66,16 +66,15 @@
 #define S3_MAX_SECRET_ACCESS_KEY_ID_SIZE 256	/* not sure about this */
 
 /* Default values for S3 requests configuration */
-#define S3_REQ_DEFAULT_RETRIES 3
-#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1
-#define S3_REQ_DEFAULT_TIMEOUT 10000
+#define S3_REQ_DEFAULT_RETRIES 3			/* maximum number of retries */
+#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1		/*< 1s between 2 successive retries */
+#define S3_REQ_DEFAULT_TIMEOUT 10000		/*< 10s before considering failure */
 
 /* S3 request configuration */
 typedef struct extstore_s3_req_cfg_ {
 	int retries;	    /* max retries for failed S3 requests */
 	int sleep_interval; /* sleep interval between successive retries (s) */
 	int timeout;	    /* request timeout (ms) */
-	int log_props;	    /* [DBG] log response properties */
 } extstore_s3_req_cfg_t;
 
 int s3status2posix_error(const S3Status s3_errorcode);
