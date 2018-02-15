@@ -81,6 +81,25 @@ int put_object(const S3BucketContext *ctx,
 	       extstore_s3_req_cfg_t *req_cfg,
 	       const char *src_file);
 
+/**
+ * Download a file from S3.
+ *
+ * @param ctx - [IN] libs3 bucket context.
+ * @param key - [IN] object key.
+ * @param req_cfg - [IN] config for this request.
+ * @param dst_file - [IN] path of the file to create/truncate and write.
+ * @param mtime - [OUT] object mtime
+ * @param size - [OUT] object size
+ *
+ * @return 0 on success, a negative posix error code in case of error.
+ */
+int get_object(const S3BucketContext *ctx,
+	       const char *key,
+	       extstore_s3_req_cfg_t *req_cfg,
+	       const char *dst_file,
+	       time_t * mtime,
+	       size_t *size);
+
 /* forward declarations */
 typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
 
