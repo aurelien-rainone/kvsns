@@ -2,6 +2,7 @@
 #define MRU_H
 
 #include <stdlib.h>
+#include <stdbool.h>
 
 /**
  * A simple most-recently-used cache, backed by a doubly-linked list.
@@ -40,18 +41,35 @@ struct mru {
 	struct mru_entry *head, *tail;
 };
 
+/* Creates a new entry and appends it at the list tail. */
 void mru_append(struct mru *mru, void *item);
+
+/* Mark an entry as used, moving it to the front of the list.
+ *
+ * Note that you SHOULD NOT call mru_mark() and then continue traversing the
+ * list; it reorders the marked item to the front of the list, and therefore you
+ * will begin traversing the whole list again.
+ */
 void mru_mark(struct mru *mru, struct mru_entry *entry);
+
+/* Reset the list to empty, cleaning up all resources. */
 void mru_clear(struct mru *mru);
 
 /* Type of the function used to compare an item to another
  */
 typedef int (*cmp_item_func) (void *a, void *b);
 
-/* Mark an entry from its item, the entry to mark is found by calling the
- * user-provided comparison function.
+/* Mark an entry as used, by having its item. The entry to mark is looked for by
+ * traversing the list and comparing items with the provided comparison
+ * function.
+ *
+ * Note that you SHOULD NOT call mru_mark_item() and then continue traversing
+ * the list; it reorders the marked item to the front of the list, and therefore
+ * you will begin traversing the whole list again.
+ *
+ * It returns true if an item has been found and marked, false otherwise.
  */
-void mru_mark_item(struct mru *mru, cmp_item_func fcmp, void *item);
+bool mru_mark_item(struct mru *mru, cmp_item_func fcmp, void *item);
 
 /* Type of the function used to free an item.
  */

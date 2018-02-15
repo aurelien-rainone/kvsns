@@ -63,26 +63,28 @@ void mru_remove_unused(struct mru *mru, size_t nkeep,
 	}
 
 	/* the previous item becomes the new tail */
-	if (p->prev) {
-		mru->tail = p->prev;
-	} else {
-		/* unless there's no previous item, in which case that's all the
-		 * MRU that is being cleared */
-		mru->tail = mru->head = NULL;
-	}
+	if (p) {
+		if (p->prev) {
+			mru->tail = p->prev;
+		} else {
+			/* unless there's no previous item, in which case that's all the
+			 * MRU that is being cleared */
+			mru->tail = mru->head = NULL;
+		}
 
-	/* remove old entries, call user callback on removed items */
-	while (p) {
-		struct mru_entry *to_free = p;
-		if (p->prev)
-			p->prev->next = NULL;
-		ffree(p->item, data);
-		p = p->next;
-		free(to_free);
+		/* remove old entries, call user callback on removed items */
+		while (p) {
+			struct mru_entry *to_free = p;
+			if (p->prev)
+				p->prev->next = NULL;
+			ffree(p->item, data);
+			p = p->next;
+			free(to_free);
+		}
 	}
 }
 
-void mru_mark_item(struct mru *mru, cmp_item_func fcmp, void *item)
+bool mru_mark_item(struct mru *mru, cmp_item_func fcmp, void *item)
 {
 	struct mru_entry *p = mru->head;
 
@@ -91,7 +93,8 @@ void mru_mark_item(struct mru *mru, cmp_item_func fcmp, void *item)
 		p = p->next;
 		if (!fcmp(to_cmp->item, item)) {
 			mru_mark(mru, to_cmp);
-			break;
+			return true;
 		}
 	}
+	return false;
 }
