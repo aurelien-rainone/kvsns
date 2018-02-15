@@ -78,15 +78,6 @@ typedef struct extstore_s3_req_cfg_ {
 	int log_props;	    /* [DBG] log response properties */
 } extstore_s3_req_cfg_t;
 
-/**
- * @brief posix error code from libS3 status error
- *
- * This function returns a posix errno equivalent from an libs3 S3Status.
- *
- * @param[in] s3_errorcode libs3 error
- *
- * @return negative posix error numbers.
- */
 int s3status2posix_error(const S3Status s3_errorcode);
 
 typedef struct growbuffer_ {
@@ -97,59 +88,49 @@ typedef struct growbuffer_ {
 	struct growbuffer_ *next;
 } growbuffer_t;
 
-/**
- * @brief returns nonzero on success, zero on out of memory
- *
- * @param[in] s3_errorcode libs3 error
- *
- * @return 0 on success
- */
 int growbuffer_append(growbuffer_t **gb, const char *data, int data_len);
 void growbuffer_read(growbuffer_t **gb, int amt, int *amt_ret, char *buffer);
 void growbuffer_destroy(growbuffer_t *gb);
 
-/**
- * Prepends t into s. Assumes s has enough space allocated
- * for the combined string.
- */
 void prepend(char* s, const char* t);
 
-/**
- * Build full path of S3 Object.
- *
- * @param object - object inode.
- * @param obj_path - [OUT] full S3 path
- * @param pathlen - [IN] max path length
- * 
- * @note Returned path doesn't start with a '/' as libs3 requires object keys
- * to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a S3 
- * requirement.
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
 int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
-
 
 typedef enum cache_ { read_cache_t, write_cache_t } cache_t;
 
-/**
- * Build path of data cache file for a given inode.
- *
- * @param object - object inode.
- * @param datacache_path - [OUT] data cache file path
- * @param read - [IN] read or write cache
- * @param pathlen - [IN] max path length
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
 int build_cache_path(kvsns_ino_t object,
 		     char *data_cache_path,
 		     cache_t cache_type,
 		     size_t pathlen);
 
+void remove_files_in(const char *dirname);
+
 char* printf_open_flags(char *dst, int flags, const size_t len);
 
-gint key_cmp_func (gconstpointer a, gconstpointer b);
+gint g_key_cmp_func (gconstpointer a, gconstpointer b);
+
+int mru_key_cmp_func (void *a, void *b);
+int rino_close(kvsns_ino_t ino);
+int wino_close(kvsns_ino_t ino);
+void rino_mru_remove (void *item, void *data);
+
+/*
+ * globals declarations
+ */
+
+/* s3/libs3 configuration */
+extern S3BucketContext bucket_ctx;
+extern char host[S3_MAX_HOSTNAME_SIZE];
+extern char bucket[S3_MAX_BUCKET_NAME_SIZE];
+extern char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
+extern char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
+extern extstore_s3_req_cfg_t def_s3_req_cfg;
+
+/* inode cache data structures */
+extern char ino_cache_dir[MAXPATHLEN];
+extern GTree *wino_cache;
+extern GTree *rino_cache;
+extern struct mru rino_mru;
+extern const size_t rino_mru_maxlen;
 
 #endif

@@ -32,9 +32,71 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include "internal.h"
+#include "s3_common.h"
+#include "mru.h"
 
+/*
+ * globals definitions
+ */
 
+/* s3 bucket configuration */
+S3BucketContext bucket_ctx = {};
+char host[S3_MAX_HOSTNAME_SIZE] = "";
+char bucket[S3_MAX_BUCKET_NAME_SIZE] = "";
+char access_key[S3_MAX_ACCESS_KEY_ID_SIZE] = "";
+char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE] = "";
+
+/*
+ * s3 default request configuration, may be overriden for specific requests.
+ */
+extstore_s3_req_cfg_t def_s3_req_cfg = {};
+
+/* Inode cache management is split in 2 non intersecting caches, one for the
+ * downloaded inodes and the other for the inodes to upload. */
+
+/* Inode cache directory (read and write). Cached files are named after the
+ * inode number they represent, preceded by the letter 'w' or 'r', depending on
+ * the type of inode cache they are in */
+char ino_cache_dir[MAXPATHLEN] = "";
+
+/* `wino_cache`, for 'written inode cache', is only used to upload
+ * new files to s3. After the creation of a new inode and until the reception of
+ * close, all successive write operations on this inode are performed on the
+ * local filesystem and thus do not involve networking. It's only when NFS
+ * requests the file closure that we start transfering the file to stable
+ * storage. When the transfer is complete the locally cached inode becomes
+ * useless and can safely be deleted.
+ *
+ * wino_cache is a tree in which keys are inodes and values are file descriptors
+ * of the cached files, on which `pwrite` can be called */
+GTree *wino_cache = NULL;
+
+/* The read inode cache involves 2 data structures.
+ *  - `rino_mru` keeps track of the most recently used inodes. An inode is
+ *  present in `rino_mru` when the cache contains a local copy of an s3
+ *  object. Disk space being somewhat limited, when an inode has not been used
+ *  recently, its local copy gets deleted and frees up disk space.
+ *  - `rino_cache` is a tree which keys are inodes and values are file
+ *  descriptors of the cached files, on which pread can be called
+ *  - `rino_mru_maxlen` is the maximum number of inodes to keep in the read
+ *  cache. There will never be more than this number as the list is shrunk
+ *  before appending.
+ */
+GTree *rino_cache = NULL;
+struct mru rino_mru = {};
+const size_t rino_mru_maxlen = 10;
+
+/**
+ * @brief posix error code from libS3 status error
+ *
+ * This function returns a posix errno equivalent from an libs3 S3Status.
+ *
+ * @param[in] s3_errorcode libs3 error
+ *
+ * @return negative posix error numbers.
+ */
 int s3status2posix_error(const S3Status s3_errorcode)
 {
 	int rc;
@@ -307,6 +369,13 @@ int s3status2posix_error(const S3Status s3_errorcode)
 	return -rc;
 }
 
+/**
+ * @brief returns nonzero on success, zero on out of memory
+ *
+ * @param[in] s3_errorcode libs3 error
+ *
+ * @return 0 on success
+ */
 int growbuffer_append(growbuffer_t **gb, const char *data, int data_len)
 {
 	int toCopy = 0 ;
@@ -382,6 +451,10 @@ void growbuffer_destroy(growbuffer_t *gb)
 	}
 }
 
+/**
+ * Prepends t into s. Assumes s has enough space allocated
+ * for the combined string.
+ */
 void prepend(char* s, const char* t)
 {
 	size_t i, len = strlen(t);
@@ -419,11 +492,237 @@ char* printf_open_flags(char *dst, int flags, const size_t len)
 	return dst;
 }
 
-gint key_cmp_func (gconstpointer a, gconstpointer b)
+gint g_key_cmp_func (gconstpointer a, gconstpointer b)
 {
 	if (a < b)
 		return -1;
-	else if (a > b)
+	if (a > b)
 		return 1;
 	return 0;
+}
+
+int mru_key_cmp_func (void *a, void *b)
+{
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
+}
+
+/*
+ * Remove everything found under `dirname` directory by calling `remove`. Not
+ * recursive.
+ */
+void remove_files_in(const char *dirname)
+{
+	/* quick and dirty safety check */
+	if (!dirname || !strcmp(dirname, "/") || !strcmp(dirname, ".")) {
+		LogFatal(COMPONENT_EXTSTORE, "invalid argument dirname=%s", dirname);
+		return;
+	}
+
+	DIR *dir;
+	struct dirent *dp;
+	char path[MAXPATHLEN];
+	dir = opendir(dirname);
+	while ((dp = readdir(dir)) != NULL) {
+		if (strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..")) {
+			snprintf(path, MAXPATHLEN, "%s/%s", dirname, dp->d_name);
+			if (remove(path))
+				LogWarn(COMPONENT_EXTSTORE,
+					"Couldn't remove file dir=%s file=%s",
+					dirname, dp->d_name);
+		}
+	}
+	closedir(dir);
+}
+
+/* Let the 'write inode cache' handle closure of an inode.
+ * Once the cached inode has been closed, we upload the file to stable storage.
+ */
+int wino_close(kvsns_ino_t ino)
+{
+	int rc, fd;
+	gpointer wkey;
+	char s3_path[S3_MAX_KEY_SIZE];
+	char write_cache_path[MAXPATHLEN];
+
+	wkey = g_tree_lookup(wino_cache, (gpointer) ino);
+	if (!wkey)
+		return 0;
+
+	fd = (int) ((intptr_t) wkey);
+	rc = close(fd);
+	if (rc == -1) {
+		rc = -errno;
+		LogCrit(COMPONENT_EXTSTORE,
+			 "error closing fd=%d errno=%d",
+			 fd, rc);
+		goto remove_fd;
+	}
+
+	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
+
+	/* transfer file to stable storage */
+	rc = put_object(&bucket_ctx, s3_path, &def_s3_req_cfg, write_cache_path);
+	if (rc != 0) {
+		LogWarn(COMPONENT_EXTSTORE,
+			 "couldn't upload file ino=%d s3key=%s fd=%d",
+			 ino, s3_path, fd);
+	}
+
+remove_fd:
+
+	g_tree_remove(wino_cache, (gpointer) ino);
+	if (remove(write_cache_path)) {
+		LogWarn(COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
+				write_cache_path);
+	}
+	return rc;
+}
+
+/* Let the 'read inode cache' handle closure of an inode.
+ * Nothing else to than closing the cached inode and removing the entry to its
+ * file descriptor from the tree.
+ */
+int rino_close(kvsns_ino_t ino)
+{
+	int rc, fd;
+	gpointer rkey;
+
+	rkey = g_tree_lookup(rino_cache, (gpointer) ino);
+	if (!rkey)
+		return 0;
+
+	fd = (int) ((intptr_t) rkey);
+	rc = close(fd);
+	if (rc == -1) {
+		rc = -errno;
+		LogWarn(COMPONENT_EXTSTORE,
+			 "error closing fd=%d errno=%d",
+			 fd, rc);
+	}
+
+	g_tree_remove(rino_cache, (gpointer) ino);
+	return rc;
+}
+
+/* callback triggered when an cached inode is evicted from the read inode
+ * cache */
+void rino_mru_remove (void *item, void *data)
+{
+	kvsns_ino_t ino = (kvsns_ino_t) item;
+	char cache_path[MAXPATHLEN];
+
+	/* cleanup the file descriptor and its references */
+	rino_close(ino);
+
+	/* delete the cached file from local filesystem */
+	build_cache_path(ino, cache_path, read_cache_t, MAXPATHLEN);
+	if (remove(cache_path) < 0) {
+		int rc = errno;
+		LogWarn(COMPONENT_EXTSTORE,
+			"Couldn't remove file ino=%lu path=%s errno=%d",
+			ino, cache_path, rc);
+	}
+}
+
+/**
+ * Build path of s3 object and return object directory and filename.
+ *
+ * @param object - object inode.
+ * @param obj_dir - [OUT] full s3 directory path.
+ * @param obj_fname - [OUT] s3 object filename, empty for a directory.
+ *
+ * @note Returned directory path doesn't start with a '/' as libs3 requires
+ * object keys to be formatted in this way. The bucket root is an empty string.
+ * However directory paths are returned with a trailing '/', this is a s3
+ * requirement.
+ *
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
+{
+	char k[KLEN];
+	char v[VLEN];
+	kvsns_ino_t ino = object;
+	kvsns_ino_t root_ino = 0LL;
+	struct stat stat;
+
+	/* get root inode number */
+	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
+	sscanf(v, "%llu|", &root_ino);
+
+	/* init return values */
+	obj_dir[0] = '\0';
+	obj_fname[0] = '\0';
+
+	while (ino != root_ino) {
+
+		/* current inode name */
+		snprintf(k, KLEN, "%llu.name", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+
+		snprintf(k, KLEN, "%llu.stat", ino);
+		RC_WRAP(kvsal_get_stat, k, &stat);
+		if (stat.st_mode & S_IFDIR) {
+			prepend(obj_dir, "/");
+			prepend(obj_dir, v);
+		} else {
+			strcpy(obj_fname, v);
+		}
+
+		/* get parent inode */
+		snprintf(k, KLEN, "%llu.parentdir", ino);
+		RC_WRAP(kvsal_get_char, k, v);
+		sscanf(v, "%llu|", &ino);
+	};
+
+	return 0;
+}
+
+/**
+ * Build full path of S3 Object.
+ *
+ * @param object - object inode.
+ * @param obj_path - [OUT] full S3 path
+ * @param pathlen - [IN] max path length
+ * 
+ * @note Returned path doesn't start with a '/' as libs3 requires object keys
+ * to be formatted in this way. The bucket root is an empty string.
+ * However directory paths are returned with a trailing '/', this is a S3 
+ * requirement.
+ *
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
+{
+	char fname[VLEN];
+	RC_WRAP(build_s3_object_path, object, obj_path, fname);
+	strcat(obj_path, fname);
+	return 0;
+}
+
+/**
+ * Build path of data cache file for a given inode.
+ *
+ * @param object - object inode.
+ * @param datacache_path - [OUT] data cache file path
+ * @param read - [IN] read or write cache
+ * @param pathlen - [IN] max path length
+ *
+ * @return 0 if successful, a negative "-errno" value in case of failure
+ */
+int build_cache_path(kvsns_ino_t object,
+		     char *data_cache_path,
+		     cache_t cache_type,
+		     size_t pathlen)
+{
+	return snprintf(data_cache_path, pathlen,
+			"%s/%c%llu",
+			ino_cache_dir,
+			(cache_type == read_cache_t)? 'r':'w',
+			(unsigned long long)object);
 }
