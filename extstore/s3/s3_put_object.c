@@ -199,19 +199,6 @@ static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 
 	cb_data->content_len -= ret;
 	cb_data->total_content_len -= ret;
-
-	if (cb_data->content_len) {
-		LogDebug(COMPONENT_EXTSTORE,
-			 "%llu bytes remaining (%d%% complete)",
-			 (unsigned long long) cb_data->total_content_len,
-			 (int) (((cb_data->total_org_content_len -
-				  cb_data->total_content_len) * 100) /
-				  cb_data->total_org_content_len));
-	} else {
-		LogInfo(COMPONENT_EXTSTORE,
-			"0 bytes remaining (100%% complete) ...");
-	}
-
 	return ret;
 }
 
@@ -428,11 +415,11 @@ int put_object(const S3BucketContext *ctx,
 			growbuffer_destroy(cb_data.gb);
 
 		if (final_status != S3StatusOK) {
-			LogCrit(COMPONENT_EXTSTORE,
+			LogWarn(COMPONENT_EXTSTORE,
 				"error single part upload %s s3sta=%d",
 				S3_get_status_name(final_status), cb_data.status);
 		} else if (cb_data.content_len) {
-			LogCrit(COMPONENT_EXTSTORE,
+			LogWarn(COMPONENT_EXTSTORE,
 				"error single part upload, remaining %llu bytes from cached file",
 				(unsigned long long) cb_data.content_len);
 		}
@@ -451,7 +438,7 @@ int put_object(const S3BucketContext *ctx,
 
 		manager.upload_id = NULL;
 		manager.commitstr = NULL;
-		manager.etags = (char **) malloc(sizeof(char *) * total_seq);
+		manager.etags = malloc(sizeof(char *) * total_seq);
 		manager.next_etags_pos = 0;
 		manager.status = S3StatusOK;
 
@@ -483,8 +470,7 @@ int put_object(const S3BucketContext *ctx,
 
 		do {
 			S3_initiate_multipart((S3BucketContext*)ctx, key, 0,
-					      &handler, 0,
-					      req_cfg->timeout,
+					      &handler, 0, req_cfg->timeout,
 					      &manager);
 			/* Decrement retries and wait 1 second longer */
 			--retries;
@@ -519,7 +505,8 @@ int put_object(const S3BucketContext *ctx,
 				MULTIPART_CHUNK_SIZE : content_len);
 
 			LogDebug(COMPONENT_EXTSTORE,
-				"sending multipart seq=%d partlen=%d", seq, part_content_len);
+				"sending multipart seq=%d/%d partlen=%d",
+				seq, total_seq, part_content_len);
 			part_data.put_object_data.content_len = part_content_len;
 			part_data.put_object_data.org_content_len = part_content_len;
 			part_data.put_object_data.total_content_len = todo_content_len;
