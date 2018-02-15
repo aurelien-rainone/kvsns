@@ -269,7 +269,7 @@ int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 {
 	upload_mgr_t *cb_data;
 	cb_data = (upload_mgr_t*) (cb_data_);
-	int ret;
+	int ret = 0;
 	if (cb_data->remaining) {
 		int to_read = ((cb_data->remaining > bufsize) ?
 				bufsize : cb_data->remaining);

@@ -100,7 +100,7 @@ const size_t rino_mru_maxlen = 10;
  */
 int s3status2posix_error(const S3Status s3_errorcode)
 {
-	int rc;
+	int rc = 0;
 
 	switch (s3_errorcode) {
 
