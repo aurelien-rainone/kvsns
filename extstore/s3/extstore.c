@@ -282,8 +282,20 @@ int extstore_fini()
 
 int extstore_del(kvsns_ino_t *ino)
 {
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "not implemented yet ino=%llu", *ino);
-	return 0;
+	int rc;
+	char s3_path[S3_MAX_KEY_SIZE];
+
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
+
+	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+
+	rc = del_object(&bucket_ctx, s3_path, &def_s3_req_cfg);
+	if (rc != 0) {
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"Couldn't delete object ino=%lu s3key=%s",
+			*ino, s3_path);
+	}
+	return rc;
 }
 
 int extstore_read(kvsns_ino_t *ino,

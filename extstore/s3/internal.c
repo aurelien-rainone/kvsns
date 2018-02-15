@@ -579,7 +579,7 @@ int wino_close(kvsns_ino_t ino)
 	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
 	if (rc != 0) {
 		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			 "couldn't upload file ino=%d s3key=%s fd=%d",
+			 "Couldn't upload file ino=%d s3key=%s fd=%d",
 			 ino, s3_path, fd);
 	}
 

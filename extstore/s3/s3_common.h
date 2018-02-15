@@ -99,6 +99,19 @@ int get_object(const S3BucketContext *ctx,
 	       time_t * mtime,
 	       size_t *size);
 
+/**
+ * Delete an S3 object.
+ *
+ * @param ctx - [IN] libs3 bucket context.
+ * @param key - [IN] object key.
+ * @param req_cfg - [IN] config for this request.
+ *
+ * @return 0 on success, a negative posix error code in case of error.
+ */
+int del_object(const S3BucketContext *ctx,
+	       const char *key,
+	       extstore_s3_req_cfg_t *req_cfg);
+
 /* forward declarations */
 typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
 

@@ -6,6 +6,7 @@ SET(extstore_LIB_SRCS
    s3_test_bucket.c
    s3_put_object.c
    s3_get_object.c
+   s3_del_object.c
    mru.c
    internal.c
 )
