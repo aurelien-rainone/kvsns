@@ -41,13 +41,13 @@ int should_retry(S3Status st, int retries, int interval)
 S3Status log_response_properties(const S3ResponseProperties *props, void *data)
 {
 #define PRINT_PROP(name, field) ({\
-	if (props->field) LogDebug(COMPONENT_EXTSTORE, "%s=%s", name, props->field); })
+	if (props->field) LogDebug(KVSNS_COMPONENT_EXTSTORE, "%s=%s", name, props->field); })
 
 	PRINT_PROP("Content-Type", contentType);
 	PRINT_PROP("Request-Id", requestId);
 	PRINT_PROP("Request-Id-2", requestId2);
 	if (props->contentLength > 0)
-		LogDebug(COMPONENT_EXTSTORE, "Content-Length=%llu",
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "Content-Length=%llu",
 			 (unsigned long long) props->contentLength);
 	PRINT_PROP("Server", server);
 	PRINT_PROP("ETag", eTag);
@@ -57,16 +57,16 @@ S3Status log_response_properties(const S3ResponseProperties *props, void *data)
 		/* gmtime is not thread-safe but we don't care here. */
 		strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
 			 gmtime(&t));
-		LogDebug(COMPONENT_EXTSTORE, "Last-Modified=%s", timebuf);
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "Last-Modified=%s", timebuf);
 	}
 	int i;
 	for (i = 0; i < props->metaDataCount; i++) {
-		LogDebug(COMPONENT_EXTSTORE, "x-amz-meta-%s=%s",
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "x-amz-meta-%s=%s",
 			 props->metaData[i].name,
 			 props->metaData[i].value);
 	}
 	if (props->usesServerSideEncryption)
-		LogDebug(COMPONENT_EXTSTORE, "UsesServerSideEncryption=true");
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "UsesServerSideEncryption=true");
 	return S3StatusOK;
 }
 
@@ -75,20 +75,20 @@ void log_response_status_error(S3Status status, const S3ErrorDetails *error)
 	if (status != S3StatusOK && error) {
 		int i;
 		if (error->message)
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"msg=%s",
 				error->message);
 		if (error->resource)
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"resource=%s",
 				error->resource);
 		if (error->furtherDetails)
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"details=%s",
 				error->furtherDetails);
 		if (error->extraDetailsCount)
 			for (i = 0; i < error->extraDetailsCount; i++)
-				LogWarn(COMPONENT_EXTSTORE,
+				LogWarn(KVSNS_COMPONENT_EXTSTORE,
 					"extra-details %s=%s",
 					error->extraDetails[i].name,
 					error->extraDetails[i].value);

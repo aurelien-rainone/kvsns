@@ -46,7 +46,7 @@ static S3Status _resp_props_cb(const S3ResponseProperties *props,
 	cb_data->mtime = (time_t) props->lastModified;
 	cb_data->size = (uint64_t) props->contentLength;
 
-	LogDebug(COMPONENT_EXTSTORE, "mtime=%lu size=%lu",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "mtime=%lu size=%lu",
 		 cb_data->mtime,
 		 cb_data->size);
 
@@ -97,7 +97,7 @@ int stats_object(const S3BucketContext *ctx,
 		rc = 0;
 	} else {
 		rc = s3status2posix_error(cb_data.status);
-		LogWarn(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
 			S3_get_status_name(cb_data.status),
 			cb_data.status, rc);
 	}

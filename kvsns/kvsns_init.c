@@ -50,25 +50,25 @@ int kvsns_start(const char *configpath)
 	struct collection_item *errors = NULL;
 	int rc;
 
-	LogInfo(COMPONENT_KVSNS, "--- Starting kvsns ---");
+	LogInfo(KVSNS_COMPONENT_KVSNS, "--- Starting kvsns ---");
 
 	rc = config_from_file("libkvsns", configpath, &cfg_items,
 			      INI_STOP_ON_ERROR, &errors);
 	if (rc) {
-		LogCrit(COMPONENT_KVSNS, "Can't load config rc=%d", rc);
+		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't load config rc=%d", rc);
 		free_ini_config_errors(errors);
 		return -rc;
 	}
 
 	rc = kvsal_init(cfg_items);
 	if (rc != 0) {
-		LogCrit(COMPONENT_KVSNS, "Can't init kvsal");
+		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't init kvsal");
 		return rc;
 	}
 
 	rc = extstore_init(cfg_items);
 	if (rc != 0) {
-		LogCrit(COMPONENT_KVSNS, "Can't init extstore");
+		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't init extstore");
 		return rc;
 	}
 

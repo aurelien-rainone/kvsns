@@ -181,7 +181,7 @@ int kvsns_close(kvsns_file_open_t *fd)
 	bool opened_and_deleted;
 	bool delete_object = false;
 
-	LogDebug(COMPONENT_KVSNS, "ino=%llu", fd->ino);
+	LogDebug(KVSNS_COMPONENT_KVSNS, "ino=%llu", fd->ino);
 
 	if (!fd)
 		return -EINVAL;

@@ -362,7 +362,7 @@ int s3status2posix_error(const S3Status s3_errorcode)
 
 	}
 	if (s3_errorcode != S3StatusOK) {
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			"Mapping %d(%s) to errno %d",
 			s3_errorcode, S3_get_status_name(s3_errorcode), rc);
 	}
@@ -519,7 +519,7 @@ void remove_files_in(const char *dirname)
 {
 	/* quick and dirty safety check */
 	if (!dirname || !strcmp(dirname, "/") || !strcmp(dirname, ".")) {
-		LogFatal(COMPONENT_EXTSTORE, "invalid argument dirname=%s", dirname);
+		LogFatal(KVSNS_COMPONENT_EXTSTORE, "invalid argument dirname=%s", dirname);
 		return;
 	}
 
@@ -531,7 +531,7 @@ void remove_files_in(const char *dirname)
 		if (strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..")) {
 			snprintf(path, MAXPATHLEN, "%s/%s", dirname, dp->d_name);
 			if (remove(path))
-				LogWarn(COMPONENT_EXTSTORE,
+				LogWarn(KVSNS_COMPONENT_EXTSTORE,
 					"Couldn't remove file dir=%s file=%s",
 					dirname, dp->d_name);
 		}
@@ -557,7 +557,7 @@ int wino_close(kvsns_ino_t ino)
 	rc = close(fd);
 	if (rc == -1) {
 		rc = -errno;
-		LogCrit(COMPONENT_EXTSTORE,
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			 "error closing fd=%d errno=%d",
 			 fd, rc);
 		goto remove_fd;
@@ -578,7 +578,7 @@ int wino_close(kvsns_ino_t ino)
 	/* transfer file to stable storage */
 	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
 	if (rc != 0) {
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			 "couldn't upload file ino=%d s3key=%s fd=%d",
 			 ino, s3_path, fd);
 	}
@@ -587,7 +587,7 @@ remove_fd:
 
 	g_tree_remove(wino_cache, (gpointer) ino);
 	if (remove(write_cache_path)) {
-		LogWarn(COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
 				write_cache_path);
 	}
 	return rc;
@@ -610,7 +610,7 @@ int rino_close(kvsns_ino_t ino)
 	rc = close(fd);
 	if (rc == -1) {
 		rc = -errno;
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			 "error closing fd=%d errno=%d",
 			 fd, rc);
 	}
@@ -633,7 +633,7 @@ void rino_mru_remove (void *item, void *data)
 	build_cache_path(ino, cache_path, read_cache_t, MAXPATHLEN);
 	if (remove(cache_path) < 0) {
 		int rc = errno;
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			"Couldn't remove file ino=%lu path=%s errno=%d",
 			ino, cache_path, rc);
 	}

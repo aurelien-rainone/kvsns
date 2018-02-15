@@ -44,7 +44,7 @@ int extstore_create(kvsns_ino_t object)
 	build_s3_path(object, s3_path, S3_MAX_KEY_SIZE);
 	build_cache_path(object, cache_path, write_cache_t, MAXPATHLEN);
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu s3_path=%s cache=%s", object, s3_path, cache_path);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu s3_path=%s cache=%s", object, s3_path, cache_path);
 
 	/* for safety, remove the cache file and start anew */
 	rc = remove(cache_path);
@@ -62,7 +62,7 @@ int extstore_create(kvsns_ino_t object)
 	fd = creat(cache_path, O_RDONLY);
 	if (fd < 0) {
 		rc = errno;
-		LogCrit(COMPONENT_EXTSTORE,
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			"Failed creating a write cache inode ino=%lu errno=%d",
 			object, rc);
 		return -rc;
@@ -83,7 +83,7 @@ int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 	 * with KVSNS_S3 defines.
 	 */
 
-	LogDebug(COMPONENT_EXTSTORE, "%s ino=%llu objid=%s objid_len=%d",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "%s ino=%llu objid=%s objid_len=%d",
 	       *ino, objid, objid_len);
 	return 0;
 }
@@ -94,7 +94,7 @@ int extstore_init(struct collection_item *cfg_items)
 	S3Status s3_status;
 	struct collection_item *item;
 
-	LogInfo(COMPONENT_EXTSTORE, "initialising s3 store");
+	LogInfo(KVSNS_COMPONENT_EXTSTORE, "initialising s3 store");
 
 	if (cfg_items == NULL)
 		return -EINVAL;
@@ -109,14 +109,14 @@ int extstore_init(struct collection_item *cfg_items)
 		return -rc;
 	if (item != NULL) {
 	    char strlvl[64];
-	    log_levels_t lvl;
+	    kvsns_log_levels_t lvl;
 	    strncpy(strlvl, get_string_config_value(item, NULL), 64);
-	    rc = parse_log_level(strlvl, &lvl);
+	    rc = kvsns_parse_log_level(strlvl, &lvl);
 	    if (!rc) {
-		LogInfo(COMPONENT_EXTSTORE, "setting log level to %s", strlvl);
-		set_log_level(COMPONENT_EXTSTORE, lvl);
+		LogInfo(KVSNS_COMPONENT_EXTSTORE, "setting log level to %s", strlvl);
+		kvsns_set_log_level(KVSNS_COMPONENT_EXTSTORE, lvl);
 	    } else
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			"Can't parse log level, default unchanged");
 	}
 
@@ -184,7 +184,7 @@ int extstore_init(struct collection_item *cfg_items)
 	bucket_ctx.protocol = S3ProtocolHTTP;
 	bucket_ctx.uriStyle = S3UriStylePath;
 
-	LogDebug(COMPONENT_EXTSTORE, "bucket=%s host=%s",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "bucket=%s host=%s",
 			 bucket_ctx.bucketName, bucket_ctx.hostName);
 
 	/* Initialize libs3 */
@@ -224,7 +224,7 @@ int extstore_init(struct collection_item *cfg_items)
 	/* check we can actually access the bucket */
 	rc = test_bucket(&bucket_ctx, &def_s3_req_cfg);
 	if (rc < 0) {
-		LogWarn(COMPONENT_EXTSTORE,
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			"Can't access bucket bucket=%s host=%s rc=%d",
 			bucket_ctx.bucketName, bucket_ctx.hostName, rc);
 		return -rc;
@@ -237,18 +237,18 @@ int extstore_init(struct collection_item *cfg_items)
 
 	struct stat st = {0};
 	if (stat(ino_cache_dir, &st) == -1) {
-		LogInfo(COMPONENT_EXTSTORE,
+		LogInfo(KVSNS_COMPONENT_EXTSTORE,
 				"Inode cache directory not found, create it dir=%s",
 				ino_cache_dir);
 		if (mkdir(ino_cache_dir, 0700) < 0) {
 			rc = -errno;
-			LogCrit(COMPONENT_EXTSTORE,
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
 				"Couldn't create inode cache directory dir=%s rc=%d",
 				ino_cache_dir, rc);
 			return rc;
 		}
 	} else {
-		LogInfo(COMPONENT_EXTSTORE,
+		LogInfo(KVSNS_COMPONENT_EXTSTORE,
 				"Found inode cache directory, empty it dir=%s",
 				ino_cache_dir);
 		/* remove cached inodes */
@@ -260,7 +260,7 @@ int extstore_init(struct collection_item *cfg_items)
 
 int extstore_fini()
 {
-	LogDebug(COMPONENT_EXTSTORE, "releasing s3 store");
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "releasing s3 store");
 
 	/* release resources */
 	S3_deinitialize();
@@ -282,7 +282,7 @@ int extstore_fini()
 
 int extstore_del(kvsns_ino_t *ino)
 {
-	LogDebug(COMPONENT_EXTSTORE, "not implemented yet ino=%llu", *ino);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "not implemented yet ino=%llu", *ino);
 	return 0;
 }
 
@@ -302,7 +302,7 @@ int extstore_read(kvsns_ino_t *ino,
 	char s3_path[S3_MAX_KEY_SIZE];
 	build_cache_path(*ino, cache_path, read_cache_t, MAXPATHLEN);
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu",
 	         *ino, offset, buffer_size);
 
 	/* Try to obtain a file descriptor to read from */
@@ -318,7 +318,7 @@ int extstore_read(kvsns_ino_t *ino,
 			rc = get_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
 					cache_path, &mtime, &size);
 			if (rc != 0) {
-				LogWarn(COMPONENT_EXTSTORE,
+				LogWarn(KVSNS_COMPONENT_EXTSTORE,
 					"Can't download s3 object ino=%lu s3_path=%s rc=%d",
 					*ino, s3_path, rc);
 				return rc;
@@ -337,7 +337,7 @@ int extstore_read(kvsns_ino_t *ino,
 		fd = open(cache_path, O_RDONLY);
 		if (fd < 0) {
 			rc = errno;
-			LogCrit(COMPONENT_EXTSTORE,
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
 				"Cached inode should have been found ino=%lu errno=%d path=%s",
 				*ino, rc, cache_path);
 
@@ -356,7 +356,7 @@ int extstore_read(kvsns_ino_t *ino,
 	*end_of_file = bytes_read == 0;
 	if (bytes_read == -1) {
 		rc = -errno;
-		LogDebug(COMPONENT_EXTSTORE, "error pread, errno=%d", rc);
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "error pread, errno=%d", rc);
 		return rc;
 	}
 
@@ -379,7 +379,7 @@ int extstore_write(kvsns_ino_t *ino,
 	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
 	build_cache_path(*ino, cache_path, write_cache_t, MAXPATHLEN);
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
 		 *ino, offset, buffer_size, s3_path, stat->st_size, cache_path);
 
 
@@ -392,7 +392,7 @@ int extstore_write(kvsns_ino_t *ino,
 	bytes_written = pwrite(fd, buffer, buffer_size, offset);
 	if (bytes_written == -1) {
 		rc = -errno;
-		LogDebug(COMPONENT_EXTSTORE, "error pwrite, errno=%d", rc);
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "error pwrite, errno=%d", rc);
 		return rc;
 	}
 
@@ -404,7 +404,7 @@ int extstore_truncate(kvsns_ino_t *ino,
 		      bool on_obj_store,
 		      struct stat *stat)
 {
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu filesize=%lu not implemented",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu filesize=%lu not implemented",
 	         *ino, filesize);
 	return 0;
 }
@@ -417,7 +417,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	uint64_t size;
 	char s3_path[S3_MAX_KEY_SIZE];
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%llu", *ino);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
 	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
 	ASSERT(s3_path[0] == '/');
@@ -466,14 +466,14 @@ int extstore_open(kvsns_ino_t ino,
 	if (key == NULL) {
 		/* didn't pass by create before open, we probably want to read
 		 * that file */
-		LogDebug(COMPONENT_EXTSTORE,
+		LogDebug(KVSNS_COMPONENT_EXTSTORE,
 			"opening in order to read? ino=%d flags=o%o flagsstr=%s", ino, flags,
 			 printf_open_flags(strflags, flags, 1024));
 		return -ENOENT;
 	} else {
 
 		/* found a file descriptor */
-		LogDebug(COMPONENT_EXTSTORE,
+		LogDebug(KVSNS_COMPONENT_EXTSTORE,
 			"opening in order to write/upload? ino=%d flags=o%o flagsstr=%s", ino, flags,
 			 printf_open_flags(strflags, flags, 1024));
 	}
@@ -488,7 +488,7 @@ int extstore_close(kvsns_ino_t ino)
 
 	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
 
-	LogDebug(COMPONENT_EXTSTORE, "ino=%d s3key=%s", ino, s3_path);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d s3key=%s", ino, s3_path);
 
 	/* an inode should not be located in both read and write caches */
 	rc = wino_close(ino);

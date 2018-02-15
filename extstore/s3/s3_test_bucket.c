@@ -62,7 +62,7 @@ int test_bucket(const S3BucketContext *ctx,
 		&_resp_complete_cb
 	};
 
-	LogInfo(COMPONENT_EXTSTORE, "bkt=%s", ctx->bucketName);
+	LogInfo(KVSNS_COMPONENT_EXTSTORE, "bkt=%s", ctx->bucketName);
 
 	do {
 		S3_test_bucket(ctx->protocol,
@@ -86,7 +86,7 @@ int test_bucket(const S3BucketContext *ctx,
 	if (cb_data.status != S3StatusOK) {
 		int rc = s3status2posix_error(cb_data.status);
 
-		LogCrit(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+		LogCrit(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
 			S3_get_status_name(cb_data.status),
 			cb_data.status, rc);
 		return rc;

@@ -47,7 +47,7 @@ static S3Status _resp_props_cb(const S3ResponseProperties *props,
 	cb_data->mtime = (time_t) props->lastModified;
 	cb_data->size = (uint64_t) props->contentLength;
 
-	LogDebug(COMPONENT_EXTSTORE, "mtime=%lu size=%lu",
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "mtime=%lu size=%lu",
 		 cb_data->mtime,
 		 cb_data->size);
 
@@ -108,7 +108,7 @@ int get_object(const S3BucketContext *ctx,
 
 	if (!outfile) {
 		rc = errno;
-		LogCrit(COMPONENT_EXTSTORE,
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 		"failed to open destination file dst_file=%s errno=%d",
 		dst_file, rc);
 		return -rc;
@@ -151,12 +151,12 @@ int get_object(const S3BucketContext *ctx,
 		*mtime = cb_data.mtime;
 		*size = cb_data.size;
 		rc = 0;
-		LogDebug(COMPONENT_EXTSTORE,
+		LogDebug(KVSNS_COMPONENT_EXTSTORE,
 			 "successfully retrieved s3 object key=%s dst_file=%s mtime=%lu size=%lu",
 			 key, dst_file, *mtime, *size);
 	} else {
 		rc = s3status2posix_error(cb_data.status);
-		LogWarn(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
 			S3_get_status_name(cb_data.status),
 			cb_data.status, rc);
 	}

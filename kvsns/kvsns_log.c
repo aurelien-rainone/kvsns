@@ -45,14 +45,14 @@ struct log_component_info {
 	const char *comp_str;	/* shorter, more useful name */
 };
 
-log_levels_t default_log_levels[] = {
-	[COMPONENT_ALL] = LVL_NULL,
-	[COMPONENT_KVSNS] = LVL_INFO,
-	[COMPONENT_KVSAL] = LVL_INFO,
-	[COMPONENT_EXTSTORE] = LVL_INFO,
+kvsns_log_levels_t default_log_levels[] = {
+	[KVSNS_COMPONENT_ALL] = LVL_NULL,
+	[KVSNS_COMPONENT_KVSNS] = LVL_INFO,
+	[KVSNS_COMPONENT_KVSAL] = LVL_INFO,
+	[KVSNS_COMPONENT_EXTSTORE] = LVL_INFO,
 };
 
-log_levels_t *component_log_level = default_log_levels;
+kvsns_log_levels_t *kvsns_component_levels = default_log_levels;
 
 static log_level_t tabLogLevel[] = {
 	[LVL_NULL] = {"LVL_NULL", "NULL", LOG_NOTICE},
@@ -63,25 +63,25 @@ static log_level_t tabLogLevel[] = {
 	[LVL_DEBUG] = {"LVL_DEBUG", "DEBUG", LOG_DEBUG},
 };
 
-struct log_component_info LogComponents[COMPONENT_COUNT] = {
-	[COMPONENT_ALL] = {
-		.comp_name = "COMPONENT_ALL",
+struct log_component_info LogComponents[KVSNS_COMPONENT_COUNT] = {
+	[KVSNS_COMPONENT_ALL] = {
+		.comp_name = "KVSNS_COMPONENT_ALL",
 		.comp_str = "",},
-	[COMPONENT_KVSNS] = {
-		.comp_name = "COMPONENT_KVSNS",
+	[KVSNS_COMPONENT_KVSNS] = {
+		.comp_name = "KVSNS_COMPONENT_KVSNS",
 		.comp_str = "KVSNS",},
-	[COMPONENT_KVSAL] = {
-		.comp_name = "COMPONENT_KVSAL",
+	[KVSNS_COMPONENT_KVSAL] = {
+		.comp_name = "KVSNS_COMPONENT_KVSAL",
 		.comp_str = "KVSAL",},
-	[COMPONENT_EXTSTORE] = {
-		.comp_name = "COMPONENT_EXTSTORE",
+	[KVSNS_COMPONENT_EXTSTORE] = {
+		.comp_name = "KVSNS_COMPONENT_EXTSTORE",
 		.comp_str = "EXTSTORE",}
 };
 
 /*static int syslog_opened = 0;*/
 
-void LogWithComponentAndLevel(log_components_t component, char *file, int line,
-			      char *function, log_levels_t level, char *format,
+void LogWithComponentAndLevel(kvsns_log_components_t component, char *file, int line,
+			      char *function, kvsns_log_levels_t level, char *format,
 			      ...)
 {
 	va_list arguments;
@@ -109,7 +109,7 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 		exit(2);
 }
 
-int parse_log_level(const char * strlevel, log_levels_t *lvl)
+int kvsns_parse_log_level(const char * strlevel, kvsns_log_levels_t *lvl)
 {
 	if (strlevel && lvl) {
 		if (!strcmp(strlevel, "NULL")) {
@@ -140,8 +140,8 @@ int parse_log_level(const char * strlevel, log_levels_t *lvl)
 	return -1;
 }
 
-void set_log_level(log_components_t component, log_levels_t lvl)
+void kvsns_set_log_level(kvsns_log_components_t component, kvsns_log_levels_t lvl)
 {
-	component_log_level[component] = lvl;
+	kvsns_component_levels[component] = lvl;
 }
 

@@ -157,10 +157,10 @@ S3Status list_parts_cb(int is_truncated,
 			time_t t = (time_t) part->lastModified;
 			strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
 				 gmtime(&t));
-			LogDebug(COMPONENT_EXTSTORE, "%-30s", timebuf);
-			LogDebug(COMPONENT_EXTSTORE, "%-15llu", (unsigned long long) part->partNumber);
-			LogDebug(COMPONENT_EXTSTORE, "%-45s", part->eTag);
-			LogDebug(COMPONENT_EXTSTORE, "%-15llu\n", (unsigned long long) part->size);
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-30s", timebuf);
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-15llu", (unsigned long long) part->partNumber);
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-45s", part->eTag);
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-15llu\n", (unsigned long long) part->size);
 		}
 	}
 
@@ -326,7 +326,7 @@ int try_get_parts_info(const S3BucketContext *ctx,
 		if (!cb_data.num_parts)
 			print_list_multipart_hdr(cb_data.all_details);
 	} else {
-		LogWarn(COMPONENT_EXTSTORE, "error %s s3sta=%d",
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d",
 			S3_get_status_name(cb_data.status),
 			cb_data.status);
 		return -1;
@@ -352,7 +352,7 @@ int put_object(const S3BucketContext *ctx,
 	cb_data.infile = fopen(src_file, "rb");
 	if (!cb_data.infile) {
 		rc = errno;
-		LogCrit(COMPONENT_EXTSTORE,
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			"can't open cached file src=%s rc=%d",
 			src_file, rc);
 		return -rc;
@@ -362,7 +362,7 @@ int put_object(const S3BucketContext *ctx,
 	struct stat statbuf;
 	if (stat(src_file, &statbuf) == -1) {
 		rc = errno;
-		LogCrit(COMPONENT_EXTSTORE,
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			"can't stat cached file, src=%d rc=%d",
 			src_file, rc);
 		return -rc;
@@ -415,11 +415,11 @@ int put_object(const S3BucketContext *ctx,
 			growbuffer_destroy(cb_data.gb);
 
 		if (final_status != S3StatusOK) {
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error single part upload %s s3sta=%d",
 				S3_get_status_name(final_status), cb_data.status);
 		} else if (cb_data.content_len) {
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error single part upload, remaining %llu bytes from cached file",
 				(unsigned long long) cb_data.content_len);
 		}
@@ -480,7 +480,7 @@ int put_object(const S3BucketContext *ctx,
 
 		if (manager.upload_id == NULL) {
 			final_status = S3StatusInterrupted;
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error initiating multipart (NULL upload_id) force error %s s3sta=%d",
 				S3_get_status_name(final_status),
 				final_status);
@@ -488,7 +488,7 @@ int put_object(const S3BucketContext *ctx,
 		}
 
 		if (final_status != S3StatusOK) {
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error initiating multipart %s s3sta=%d",
 				S3_get_status_name(final_status),
 				final_status);
@@ -504,7 +504,7 @@ int put_object(const S3BucketContext *ctx,
 			part_content_len = ((content_len > MULTIPART_CHUNK_SIZE) ?
 				MULTIPART_CHUNK_SIZE : content_len);
 
-			LogDebug(COMPONENT_EXTSTORE,
+			LogDebug(KVSNS_COMPONENT_EXTSTORE,
 				"sending multipart seq=%d/%d partlen=%d",
 				seq, total_seq, part_content_len);
 			part_data.put_object_data.content_len = part_content_len;
@@ -540,7 +540,7 @@ int put_object(const S3BucketContext *ctx,
 			} while (should_retry(final_status, retries, interval));
 
 			if (final_status != S3StatusOK) {
-				LogWarn(COMPONENT_EXTSTORE,
+				LogWarn(KVSNS_COMPONENT_EXTSTORE,
 					"error multipart upload %s seq=%d s3sta=%d",
 					S3_get_status_name(final_status),
 					seq, final_status);
@@ -581,7 +581,7 @@ int put_object(const S3BucketContext *ctx,
 		} while (should_retry(final_status, retries, interval));
 
 		if (final_status != S3StatusOK) {
-			LogWarn(COMPONENT_EXTSTORE,
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error completing multipart upload %s s3sta=%d",
 				S3_get_status_name(final_status),
 				final_status);
@@ -600,7 +600,7 @@ clean:
 
 	if (final_status != S3StatusOK) {
 		int rc = s3status2posix_error(final_status);
-		LogCrit(COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
+		LogCrit(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
 			S3_get_status_name(final_status),
 			final_status,
 			rc);

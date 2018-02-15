@@ -96,46 +96,46 @@
 /*
  * Log message severity constants
  */
-typedef enum log_levels {
+typedef enum kvsns_log_levels {
 	LVL_NULL,
 	LVL_FATAL,
 	LVL_CRIT,
 	LVL_WARN,
 	LVL_INFO,
 	LVL_DEBUG,
-	NB_LOG_LEVEL
-} log_levels_t;
+        NUM_LOG_LEVEL
+} kvsns_log_levels_t;
 
-extern log_levels_t *component_log_level;
+extern kvsns_log_levels_t *kvsns_component_levels;
 
 /*
  * Log components used throughout the code.
  */
-typedef enum log_components {
-	COMPONENT_ALL = 0,	/* Used for changing logging for all
+typedef enum kvsns_log_components {
+        KVSNS_COMPONENT_ALL = 0,	/* Used for changing logging for all
 				 * components */
-	COMPONENT_LOG,		/* Keep this first, some code depends on it
+        KVSNS_COMPONENT_LOG,		/* Keep this first, some code depends on it
 				 * being the first component */
-	COMPONENT_KVSNS,
-	COMPONENT_KVSAL,
-	COMPONENT_EXTSTORE,
-	COMPONENT_COUNT
-} log_components_t;
+        KVSNS_COMPONENT_KVSNS,
+        KVSNS_COMPONENT_KVSAL,
+        KVSNS_COMPONENT_EXTSTORE,
+        KVSNS_COMPONENT_COUNT
+} kvsns_log_components_t;
 
 /* Parse strlevel into its corresponding integer value.
  * Returns 0 on success, -1 on error */
-int parse_log_level(const char * strlevel, log_levels_t *lvl);
+int kvsns_parse_log_level(const char * strlevel, kvsns_log_levels_t *lvl);
 
 /* Set the log level of given component. */
-void set_log_level(log_components_t component, log_levels_t lvl);
+void kvsns_set_log_level(kvsns_log_components_t component, kvsns_log_levels_t lvl);
 
-void LogWithComponentAndLevel(log_components_t component, char *file, int line,
-			      char *function, log_levels_t level, char *format,
+void LogWithComponentAndLevel(kvsns_log_components_t component, char *file, int line,
+                              char *function, kvsns_log_levels_t level, char *format,
 			      ...);
 
 #define LogFatal(component, format, args...) \
 	do { \
-		if (component_log_level[component] \
+                if (kvsns_component_levels[component] \
 		    >= LVL_FATAL) \
 			LogWithComponentAndLevel(component, \
 						(char *) __FILE__,\
@@ -146,7 +146,7 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 
 #define LogCrit(component, format, args...) \
 	do { \
-		if (component_log_level[component] \
+                if (kvsns_component_levels[component] \
 		    >= LVL_CRIT) \
 			LogWithComponentAndLevel(component, \
 						(char *) __FILE__,\
@@ -157,7 +157,7 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 
 #define LogWarn(component, format, args...) \
 	do { \
-		if (component_log_level[component] \
+                if (kvsns_component_levels[component] \
 		    >= LVL_WARN) \
 			LogWithComponentAndLevel(component, \
 						(char *) __FILE__,\
@@ -168,7 +168,7 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 
 #define LogInfo(component, format, args...) \
 	do { \
-		if (component_log_level[component] \
+                if (kvsns_component_levels[component] \
 		    >= LVL_INFO) \
 			LogWithComponentAndLevel(component, \
 						(char *) __FILE__,\
@@ -179,7 +179,7 @@ void LogWithComponentAndLevel(log_components_t component, char *file, int line,
 
 #define LogDebug(component, format, args...) \
 	do { \
-		if (component_log_level[component] \
+                if (kvsns_component_levels[component] \
 		    >= LVL_DEBUG) \
 			LogWithComponentAndLevel(component, \
 						(char *) __FILE__,\
