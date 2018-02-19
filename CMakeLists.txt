@@ -19,10 +19,10 @@ message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
 # Option (for choosing KVSAL backend)
 option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" ON)
 
-option(USE_POSIX_STORE "Use POSIX directory as object store" ON)
+option(USE_POSIX_STORE "Use POSIX directory as object store" OFF)
 option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
 option(USE_RADOS "Use Ceph/RADOS via librados" OFF)
-option(USE_S3 "Use S3 via libs3" OFF)
+option(USE_S3 "Use S3 via libs3" ON)
 
 if(USE_FSAL_LUSTRE)
     set(BCOND_LUSTRE "%bcond_without")
