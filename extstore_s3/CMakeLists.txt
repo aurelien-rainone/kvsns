@@ -23,8 +23,8 @@ if(NOT GLib_FOUND)
 endif(NOT GLib_FOUND)
 
 include_directories(${GLib_INCLUDE_DIRS})
-add_library(extstore SHARED ${extstore_LIB_SRCS})
-target_link_libraries(extstore s3 ini_config ${GLib_LIBRARY})
+add_library(extstore_s3 SHARED ${extstore_LIB_SRCS})
+target_link_libraries(extstore_s3 s3 ini_config ${GLib_LIBRARY})
 
-add_custom_command(TARGET extstore
+add_custom_command(TARGET extstore_s3
                    COMMAND ${CMAKE_COMMAND} -E copy libextstore.so ..)

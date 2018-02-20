@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 2.6.3)
 cmake_policy(SET CMP0017 NEW)
 
 PROJECT(libkvsns C)
-set(LIBKVSNS_MAJOR_VERSION 1)
-set(LIBKVSNS_MINOR_VERSION 2)
-set(LIBKVSNS_PATCH_LEVEL 3)
+set(LIBKVSNS_MAJOR_VERSION 2)
+set(LIBKVSNS_MINOR_VERSION 0)
+set(LIBKVSNS_PATCH_LEVEL 0)
 set(LIBKVSNS_EXTRA_VERSION "")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${CMAKE_SOURCE_DIR}/include -fPIC -g")
@@ -15,64 +15,6 @@ set(LIBKVSNS_BASE_VERSION ${LIBKVSNS_MAJOR_VERSION}.${LIBKVSNS_MINOR_VERSION}.${
 
 message( STATUS "cmake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
 message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
-
-# Option (for choosing KVSAL backend)
-option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" ON)
-
-option(USE_POSIX_STORE "Use POSIX directory as object store" OFF)
-option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
-option(USE_RADOS "Use Ceph/RADOS via librados" OFF)
-option(USE_S3 "Use S3 via libs3" ON)
-
-if(USE_FSAL_LUSTRE)
-    set(BCOND_LUSTRE "%bcond_without")
-else(USE_FSAL_LUSTRE)
-    set(BCOND_LUSTRE "%bcond_with")
-endif(USE_FSAL_LUSTRE)
-
-# BCOND* variables for spec file */
-if (USE_KVS_REDIS)
-	set(BCOND_KVS_REDIS "%bcond_without")
-else (USE_KVS_REDIS)
-	set(BCOND_KVS_REDIS "%bcond_with")
-endif (USE_KVS_REDIS)
-
-if (USE_POSIX_STORE)
-	set(BCOND_POSIX_STORE "%bcond_without")
-else (USE_POSIX_STORE)
-	set(BCOND_POSIX_STORE "%bcond_with")
-endif (USE_POSIX_STORE)
-
-if (USE_POSIX_OBJ)
-	set(BCOND_POSIX_OBJ "%bcond_without")
-else (USE_POSIX_OBJ)
-	set(BCOND_POSIX_OBJ "%bcond_with")
-endif (USE_POSIX_OBJ)
-
-if (USE_RADOS)
-	set(BCOND_RADOS "%bcond_without")
-else (USE_RADOS)
-	set(BCOND_RADOS "%bcond_with")
-endif (USE_RADOS)
-
-if (USE_S3)
-	set(BCOND_S3 "%bcond_without")
-else (USE_S3)
-	set(BCOND_S3 "%bcond_with")
-endif (USE_S3)
-
-# Final tuning
-if (USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
-  set(USE_POSIX_STORE OFF)
-  message(STATUS "Disabling POSIX Store")
-endif(USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
-
-message(STATUS "USE_KVS_REDIS=${USE_KVS_REDIS}")
-message(STATUS "USE_POSIX_STORE=${USE_POSIX_STORE}")
-message(STATUS "USE_POSIX_OBJ=${USE_POSIX_OBJ}")
-message(STATUS "USE_RADOS=${USE_RADOS}")
-message(STATUS "USE_S3=${USE_S3}")
-
 
 include(CheckIncludeFiles)
 include(CheckLibraryExists)
@@ -93,43 +35,9 @@ if((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 endif((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 
 ## Start building stuff ##
-if(USE_KVS_REDIS)
-
-
-find_library(HAVE_HIREDIS hiredis)
-check_library_exists(
-    hiredis
-    redisCommand
-    ""
-    HAVE_HIREDIS
-    )
-check_include_files("hiredis/hiredis.h" HAVE_HIREDIS_H)
-
-if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
-      message(FATAL_ERROR "Cannot find hiredis")
-endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
-endif(USE_KVS_REDIS)
-
-### Check for rados ###
-if(USE_RADOS)
-check_library_exists(
-	rados
-	rados_connect
-	""
-	HAVE_LIBRADOS
-	)
-check_include_files("rados/librados.h" HAVE_RADOS_H)
-
-if((NOT HAVE_LIBRADOS) OR (NOT HAVE_RADOS_H))
-      message(FATAL_ERROR "Cannot find librados")
-endif((NOT HAVE_LIBRADOS) OR (NOT HAVE_RADOS_H))
-
-endif(USE_RADOS)
-
-
 # Build ancillary libs
-add_subdirectory(extstore)
-set(STORE_LIBRARY extstore)
+add_subdirectory(extstore_s3)
+set(STORE_LIBRARY extstore_s3)
 
 add_subdirectory(kvsal)
 set(KVSAL_LIBRARY kvsal)
