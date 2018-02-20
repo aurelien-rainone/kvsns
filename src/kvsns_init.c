@@ -60,6 +60,9 @@ int kvsns_start(const char *configpath)
 		return -rc;
 	}
 
+	kvsns_init_s3_paths();
+	kvsns_init_root(false);
+
 	rc = kvsal_init(cfg_items);
 	if (rc != 0) {
 		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't init kvsal");
@@ -81,6 +84,7 @@ int kvsns_stop(void)
 	RC_WRAP(kvsal_fini);
 	RC_WRAP(extstore_fini);
 	free_ini_config_errors(cfg_items);
+	kvsns_free_s3_paths();
 	return 0;
 }
 

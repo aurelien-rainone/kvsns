@@ -40,6 +40,9 @@
 #include <kvsns/kvsal.h>
 #include <kvsns/kvsns.h>
 #include "kvsns_internal.h"
+#include <gmodule.h>
+
+static GTree *s3_paths;
 
 int kvsns_next_inode(kvsns_ino_t *ino)
 {
@@ -372,3 +375,37 @@ int kvsns_lookup_path(kvsns_cred_t *cred, kvsns_ino_t *parent, char *path,
 	return rc;
 }
 
+gint _ino_cmp_func (gconstpointer a, gconstpointer b)
+{
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
+}
+
+void kvsns_init_s3_paths()
+{
+	s3_paths = g_tree_new(_ino_cmp_func);
+}
+
+void kvsns_free_s3_paths()
+{
+	g_tree_destroy(s3_paths);
+	s3_paths = NULL;
+}
+
+int kvsns_get_s3_path(kvsns_ino_t *ino, int size, char *str)
+{
+	gpointer s3_path = g_tree_lookup(s3_paths, (gconstpointer) *ino);
+	if (!s3_path)
+		return -ENOENT;
+	strncpy(str, s3_path, size);
+	return 0;
+}
+
+int kvsns_set_s3_path(kvsns_ino_t *ino, const char *str)
+{
+	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) str);
+	return 0;
+}

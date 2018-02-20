@@ -62,5 +62,9 @@ int kvsns_update_stat(kvsns_ino_t *ino, int flags);
 int kvsns_amend_stat(struct stat *stat, int flags);
 int kvsns_delall_xattr(kvsns_cred_t *cred, kvsns_ino_t *ino);
 
+void kvsns_init_s3_paths();
+void kvsns_free_s3_paths();
+int kvsns_get_s3_path(kvsns_ino_t *ino, int size, char *str);
+int kvsns_set_s3_path(kvsns_ino_t *ino, const char *str);
 
 #endif
