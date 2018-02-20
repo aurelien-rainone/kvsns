@@ -35,14 +35,12 @@ if((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 endif((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 
 ## Start building stuff ##
-# Build ancillary libs
-add_subdirectory(extstore_s3)
-set(STORE_LIBRARY extstore_s3)
 
-add_subdirectory(kvsal)
+add_subdirectory(kvsal/redis)
 set(KVSAL_LIBRARY kvsal)
+add_subdirectory(src)
 
-add_subdirectory(kvsns)
+#add_subdirectory(kvsns)
 
 add_subdirectory(tests)
 add_subdirectory(kvsns_shell)
