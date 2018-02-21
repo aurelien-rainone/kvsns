@@ -46,17 +46,9 @@ static GTree *s3_paths;
 static kvsns_ino_t next_ino = KVSNS_ROOT_INODE;
 struct stat root_stat = {};
 
-int kvsns_next_inode(kvsns_ino_t *ino)
+void kvsns_next_inode(kvsns_ino_t *ino)
 {
-	int rc;
-	if (!ino)
-		return -EINVAL;
-
-	rc = kvsal_incr_counter("ino_counter", ino);
-	if (rc != 0)
-		return rc;
-
-	return 0;
+	*ino = next_ino++;
 }
 
 int kvsns_str2parentlist(kvsns_ino_t *inolist, int *size, char *str)
@@ -176,7 +168,7 @@ int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 	if (rc == 0)
 		return -EEXIST;
 
-	RC_WRAP(kvsns_next_inode, new_entry);
+	kvsns_next_inode(new_entry);
 	RC_WRAP(kvsns_get_stat, parent, &parent_stat);
 
 	RC_WRAP(kvsal_begin_transaction);
@@ -410,7 +402,7 @@ int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino)
 {
 	if (!ino || !str)
 		return -EINVAL;
-	*ino = next_ino++;
+	kvsns_next_inode(ino);
 	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) str);
 	return 0;
 }
