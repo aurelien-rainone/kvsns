@@ -6,6 +6,7 @@ SET(kvsns_LIB_SRCS
     kvsns_xattr.c
     kvsns_copy.c
     kvsns_log.c
+    kvsns_utils.c
     extstore_s3/extstore.c
     extstore_s3/s3_common.c
     extstore_s3/s3_stats_object.c

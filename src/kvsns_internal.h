@@ -38,17 +38,9 @@
 #include <errno.h>
 #include <ini_config.h>
 #include <kvsns/kvsns.h>
+#include "kvsns_utils.h"
 #include <string.h>
 
-#define RC_WRAP(__function, ...) ({\
-	int __rc = __function(__VA_ARGS__);\
-	if (__rc != 0)        \
-		return __rc; })
-
-#define RC_WRAP_LABEL(__rc, __label, __function, ...) ({\
-	__rc = __function(__VA_ARGS__);\
-	if (__rc != 0)        \
-		goto __label; })
 
 int kvsns_next_inode(kvsns_ino_t *ino);
 int kvsns_str2parentlist(kvsns_ino_t *inolist, int *size, char *str);

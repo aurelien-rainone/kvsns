@@ -42,6 +42,7 @@
 #include <kvsns/kvsns.h>
 #include <kvsns/extstore.h>
 #include "kvsns_internal.h"
+#include "kvsns_utils.h"
 
 static struct collection_item *cfg_items;
 

@@ -26,6 +26,7 @@
  */
 
 #include <kvsns/extstore.h>
+#include "../kvsns_utils.h"
 #include <kvsns/kvsal.h>
 #include <hiredis/hiredis.h>
 #include <gmodule.h>

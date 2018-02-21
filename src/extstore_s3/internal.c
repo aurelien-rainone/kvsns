@@ -33,6 +33,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include "../kvsns_utils.h"
 #include "internal.h"
 #include "inode_cache.h"
 #include "s3_common.h"
@@ -400,47 +401,6 @@ void growbuffer_destroy(growbuffer_t *gb)
 		free(gb);
 		gb = (next == start) ? 0 : next;
 	}
-}
-
-/**
- * Prepends t into s. Assumes s has enough space allocated
- * for the combined string.
- */
-void prepend(char* s, const char* t)
-{
-	size_t i, len = strlen(t);
-	memmove(s + len, s, strlen(s) + 1);
-	for (i = 0; i < len; ++i)
-		s[i] = t[i];
-}
-
-char* printf_open_flags(char *dst, int flags, const size_t len)
-{
-	if (flags & O_ACCMODE) strncat(dst, "O_ACCMODE ", len);
-	if (flags & O_RDONLY) strncat(dst, "O_RDONLY ", len);
-	if (flags & O_WRONLY) strncat(dst, "O_WRONLY ", len);
-	if (flags & O_RDWR) strncat(dst, "O_RDWR ", len);
-	if (flags & O_CREAT) strncat(dst, "O_CREAT ", len);
-	if (flags & O_EXCL) strncat(dst, "O_EXCL ", len);
-	if (flags & O_NOCTTY) strncat(dst, "O_NOCTTY ", len);
-	if (flags & O_TRUNC) strncat(dst, "O_TRUNC ", len);
-	if (flags & O_APPEND) strncat(dst, "O_APPEND ", len);
-	if (flags & O_NONBLOCK) strncat(dst, "O_NONBLOCK ", len);
-	if (flags & O_DSYNC) strncat(dst, "O_DSYNC ", len);
-	if (flags & FASYNC) strncat(dst, "FASYNC ", len);
-#ifdef O_DIRECT
-	if (flags & O_DIRECT) strncat(dst, "O_DIRECT ", len);
-#endif
-#ifdef O_LARGEFILE
-	if (flags & O_LARGEFILE) strncat(dst, "O_LARGEFILE ", len);
-#endif
-	if (flags & O_DIRECTORY) strncat(dst, "O_DIRECTORY ", len);
-	if (flags & O_NOFOLLOW) strncat(dst, "O_NOFOLLOW ", len);
-#ifdef O_NOATIME
-	if (flags & O_NOATIME) strncat(dst, "O_NOATIME ", len);
-#endif
-	if (flags & O_CLOEXEC) strncat(dst, "O_CLOEXEC ", len);
-	return dst;
 }
 
 gint g_key_cmp_func (gconstpointer a, gconstpointer b)
