@@ -80,12 +80,21 @@ int test_bucket(const S3BucketContext *ctx,
  * @param req_cfg - [IN] config for this request.
  * @param mtime - [OUT] object mtime
  * @param size - [OUT] object size
+ * @param posix_stat - [OUT] object posix attrs, stored in s3 md
+ * @param has_posix_stat - [OUT] reports if object md has all posix attributes.
  *
  * @return 0 on success, a negative posix error code in case of error.
  */
-int stats_object(const S3BucketContext *ctx, const char *key,
-		 extstore_s3_req_cfg_t *req_cfg,
-		 time_t *mtime, uint64_t *size);
+int get_stats_object(const S3BucketContext *ctx, const char *key,
+		     extstore_s3_req_cfg_t *req_cfg,
+		     time_t *mtime, uint64_t *size,
+		     struct stat *posix_stat,
+		     bool *has_posix_stat);
+
+/*TODO: write documentation */
+int set_stats_object(const S3BucketContext *ctx, const char *key,
+		     extstore_s3_req_cfg_t *req_cfg,
+		     struct stat *posix_stat);
 
 /**
  * Upload a file to S3.

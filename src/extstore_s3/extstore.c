@@ -457,16 +457,38 @@ int extstore_getattr(kvsns_ino_t *ino,
 	}
 
 	/* perform HEAD on s3 object*/
-	rc = stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
-			    &mtime, &size);
-
+	bool posixified = false;
+	rc = get_stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+			      &mtime, &size, stat, &posixified);
 	if (rc != 0) {
 		return rc;
 	}
+	if (!posixified) {
+		/* "posixify" this s3 object */
+		struct stat bufstat;
+		bufstat.st_size = size;
+		/* TODO: set default stat (look in xxx_new_entry_xxx )*/
+		/* TODO: manage mode (dir/file) */
+		bool openbar = false;
+		if (openbar != 0)
+			bufstat.st_mode = S_IFDIR|0777;
+		else
+			bufstat.st_mode = S_IFDIR|0755;
+		bufstat.st_ino = KVSNS_ROOT_INODE;
+		bufstat.st_nlink = 2;
+		bufstat.st_uid = 0;
+		bufstat.st_gid = 0;
+		bufstat.st_mtime = mtime;
+		bufstat.st_atime = mtime;
+		bufstat.st_ctime = mtime;
 
-	stat->st_size = size;
-	stat->st_mtime = mtime;
-	stat->st_atime = mtime;
+		rc = set_stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+				      &bufstat);
+		if (rc != 0)
+			return rc;
+
+		memcpy(stat, &bufstat, sizeof(struct stat));
+	}
 
 	return 0;
 }
