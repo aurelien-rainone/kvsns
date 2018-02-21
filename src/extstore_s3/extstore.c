@@ -30,6 +30,7 @@
 #include <hiredis/hiredis.h>
 #include <gmodule.h>
 #include "internal.h"
+#include "inode_cache.h"
 #include "s3_common.h"
 #include "mru.h"
 

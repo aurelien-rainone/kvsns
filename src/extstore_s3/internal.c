@@ -1,4 +1,4 @@
-/*
+﻿/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include "internal.h"
+#include "inode_cache.h"
 #include "s3_common.h"
 #include "mru.h"
 
@@ -53,41 +54,6 @@ char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE] = "";
  * override it.
  */
 extstore_s3_req_cfg_t def_s3_req_cfg = {};
-
-/* Inode cache management is split in 2 non intersecting caches, one for the
- * downloaded inodes and the other for the inodes to upload. */
-
-/* Inode cache directory (read and write). Cached files are named after the
- * inode number they represent, preceded by the letter 'w' or 'r', depending on
- * the type of inode cache they are in */
-char ino_cache_dir[MAXPATHLEN] = "";
-
-/* `wino_cache`, for 'written inode cache', is only used to upload
- * new files to s3. After the creation of a new inode and until the reception of
- * close, all successive write operations on this inode are performed on the
- * local filesystem and thus do not involve networking. It's only when NFS
- * requests the file closure that we start transfering the file to stable
- * storage. When the transfer is complete the locally cached inode becomes
- * useless and can safely be deleted.
- *
- * wino_cache is a tree in which keys are inodes and values are file descriptors
- * of the cached files, on which `pwrite` can be called */
-GTree *wino_cache = NULL;
-
-/* The read inode cache involves 2 data structures.
- *  - `rino_mru` keeps track of the most recently used inodes. An inode is
- *  present in `rino_mru` when the cache contains a local copy of an s3
- *  object. Disk space being somewhat limited, when an inode has not been used
- *  recently, its local copy gets deleted and frees up disk space.
- *  - `rino_cache` is a tree which keys are inodes and values are file
- *  descriptors of the cached files, on which pread can be called
- *  - `rino_mru_maxlen` is the maximum number of inodes to keep in the read
- *  cache. There will never be more than this number as the list is shrunk
- *  before appending.
- */
-GTree *rino_cache = NULL;
-struct mru rino_mru = {};
-const size_t rino_mru_maxlen = 10;
 
 /**
  * @brief posix error code from libS3 status error
@@ -539,106 +505,6 @@ void remove_files_in(const char *dirname)
 	closedir(dir);
 }
 
-/* Let the 'write inode cache' handle closure of an inode.
- * Once the cached inode has been closed, we upload the file to stable storage.
- */
-int wino_close(kvsns_ino_t ino)
-{
-	int rc, fd;
-	gpointer wkey;
-	char s3_path[S3_MAX_KEY_SIZE];
-	char write_cache_path[MAXPATHLEN];
-
-	wkey = g_tree_lookup(wino_cache, (gpointer) ino);
-	if (!wkey)
-		return 0;
-
-	fd = (int) ((intptr_t) wkey);
-	rc = close(fd);
-	if (rc == -1) {
-		rc = -errno;
-		LogCrit(KVSNS_COMPONENT_EXTSTORE,
-			 "error closing fd=%d errno=%d",
-			 fd, rc);
-		goto remove_fd;
-	}
-
-	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
-	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
-
-	/* override default s3 request config */
-	extstore_s3_req_cfg_t put_req_cfg;
-	memcpy(&put_req_cfg, &def_s3_req_cfg, sizeof(put_req_cfg));
-	put_req_cfg.retries = 3;
-	put_req_cfg.sleep_interval = 1;
-	/* for multipart, it's the timeout for the transfer of one part, it's
-	 * reset after each part */
-	put_req_cfg.timeout = 5 * 60 * 1000; /* 5Min*/
-
-	/* transfer file to stable storage */
-	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
-	if (rc != 0) {
-		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			 "Couldn't upload file ino=%d s3key=%s fd=%d",
-			 ino, s3_path, fd);
-	}
-
-remove_fd:
-
-	g_tree_remove(wino_cache, (gpointer) ino);
-	if (remove(write_cache_path)) {
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
-				write_cache_path);
-	}
-	return rc;
-}
-
-/* Let the 'read inode cache' handle closure of an inode.
- * Nothing else to than closing the cached inode and removing the entry to its
- * file descriptor from the tree.
- */
-int rino_close(kvsns_ino_t ino)
-{
-	int rc, fd;
-	gpointer rkey;
-
-	rkey = g_tree_lookup(rino_cache, (gpointer) ino);
-	if (!rkey)
-		return 0;
-
-	fd = (int) ((intptr_t) rkey);
-	rc = close(fd);
-	if (rc == -1) {
-		rc = -errno;
-		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			 "error closing fd=%d errno=%d",
-			 fd, rc);
-	}
-
-	g_tree_remove(rino_cache, (gpointer) ino);
-	return rc;
-}
-
-/* callback triggered when an cached inode is evicted from the read inode
- * cache */
-void rino_mru_remove (void *item, void *data)
-{
-	kvsns_ino_t ino = (kvsns_ino_t) item;
-	char cache_path[MAXPATHLEN];
-
-	/* cleanup the file descriptor and its references */
-	rino_close(ino);
-
-	/* delete the cached file from local filesystem */
-	build_cache_path(ino, cache_path, read_cache_t, MAXPATHLEN);
-	if (remove(cache_path) < 0) {
-		int rc = errno;
-		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			"Couldn't remove file ino=%lu path=%s errno=%d",
-			ino, cache_path, rc);
-	}
-}
-
 /**
  * Build path of s3 object and return object directory and filename.
  *
@@ -713,26 +579,4 @@ int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
 	RC_WRAP(build_s3_object_path, object, obj_path, fname);
 	strcat(obj_path, fname);
 	return 0;
-}
-
-/**
- * Build path of data cache file for a given inode.
- *
- * @param object - object inode.
- * @param datacache_path - [OUT] data cache file path
- * @param read - [IN] read or write cache
- * @param pathlen - [IN] max path length
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-int build_cache_path(kvsns_ino_t object,
-		     char *data_cache_path,
-		     cache_t cache_type,
-		     size_t pathlen)
-{
-	return snprintf(data_cache_path, pathlen,
-			"%s/%c%llu",
-			ino_cache_dir,
-			(cache_type == read_cache_t)? 'r':'w',
-			(unsigned long long)object);
 }
