@@ -36,6 +36,31 @@
 #include "internal.h"
 
 
+/* S3 constants/limits nor provided by libs3.h */
+#define S3_MAX_ACCESS_KEY_ID_SIZE 256		/* not sure about this */
+#define S3_MAX_SECRET_ACCESS_KEY_ID_SIZE 256	/* not sure about this */
+
+/* Default values for S3 requests configuration */
+#define S3_REQ_DEFAULT_RETRIES 3			/* maximum number of retries */
+#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1		/*< 1s between 2 successive retries */
+#define S3_REQ_DEFAULT_TIMEOUT 10000		/*< 10s before considering failure */
+
+/* s3/libs3 configuration */
+extern S3BucketContext bucket_ctx;
+extern char host[S3_MAX_HOSTNAME_SIZE];
+extern char bucket[S3_MAX_BUCKET_NAME_SIZE];
+extern char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
+extern char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
+
+/* S3 request configuration */
+typedef struct extstore_s3_req_cfg_ {
+	int retries;	    /* max retries for failed S3 requests */
+	int sleep_interval; /* sleep interval between successive retries (s) */
+	int timeout;	    /* request timeout (ms) */
+} extstore_s3_req_cfg_t;
+/* default s3 request configuration */
+extern extstore_s3_req_cfg_t def_s3_req_cfg;
+
 /**
  * Test bucket existence/access.
  *
@@ -111,9 +136,6 @@ int get_object(const S3BucketContext *ctx,
 int del_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg);
-
-/* forward declarations */
-typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
 
 /* S3 internal functions */
 int should_retry(S3Status st, int retries, int interval);
