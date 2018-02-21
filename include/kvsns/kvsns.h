@@ -53,6 +53,7 @@
 
 #include <kvsns/kvsal.h>
 
+#define KVSNS_S3_ROOT_PATH "/"
 #define KVSNS_ROOT_INODE 2LL
 #define KVSNS_ROOT_UID 0
 

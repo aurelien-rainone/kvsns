@@ -43,6 +43,8 @@
 #include <gmodule.h>
 
 static GTree *s3_paths;
+static kvsns_ino_t next_ino = KVSNS_ROOT_INODE;
+struct stat root_stat = {};
 
 int kvsns_next_inode(kvsns_ino_t *ino)
 {
@@ -395,17 +397,20 @@ void kvsns_free_s3_paths()
 	s3_paths = NULL;
 }
 
-int kvsns_get_s3_path(kvsns_ino_t *ino, int size, char *str)
+int kvsns_get_s3_path(kvsns_ino_t ino, int size, char *str)
 {
-	gpointer s3_path = g_tree_lookup(s3_paths, (gconstpointer) *ino);
+	gpointer s3_path = g_tree_lookup(s3_paths, (gconstpointer) ino);
 	if (!s3_path)
 		return -ENOENT;
 	strncpy(str, s3_path, size);
 	return 0;
 }
 
-int kvsns_set_s3_path(kvsns_ino_t *ino, const char *str)
+int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino)
 {
+	if (!ino || !str)
+		return -EINVAL;
+	*ino = next_ino++;
 	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) str);
 	return 0;
 }

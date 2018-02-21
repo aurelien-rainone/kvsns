@@ -61,7 +61,6 @@ int kvsns_start(const char *configpath)
 	}
 
 	kvsns_init_s3_paths();
-	kvsns_init_root(false);
 
 	rc = kvsal_init(cfg_items);
 	if (rc != 0) {
@@ -90,37 +89,28 @@ int kvsns_stop(void)
 
 int kvsns_init_root(int openbar)
 {
-	char k[KLEN];
-	char v[KLEN];
-	struct stat bufstat;
 	kvsns_ino_t ino;
 
-	ino = KVSNS_ROOT_INODE;
+	/* create root dir entry */
+	RC_WRAP(kvsns_add_s3_path, KVSNS_S3_ROOT_PATH, &ino);
 
-	snprintf(k, KLEN, "%llu.parentdir", ino);
-	snprintf(v, VLEN, "%llu|", ino);
-	RC_WRAP(kvsal_set_char, k, v);
+	/* create and set the root dir stat, the stats for the root dir are the
+	 *  only to not be stored on stable storage. The file corresponding to
+	 * the root doesn't actually exist on s3.
+	 */
 
-	snprintf(k, KLEN, "ino_counter");
-	snprintf(v, VLEN, "3");
-	RC_WRAP(kvsal_set_char, k, v);
-
-	/* Set stat */
-	memset(&bufstat, 0, sizeof(struct stat));
+	memset(&root_stat, 0, sizeof(struct stat));
 	if (openbar != 0)
-		bufstat.st_mode = S_IFDIR|0777;
+		root_stat.st_mode = S_IFDIR|0777;
 	else
-		bufstat.st_mode = S_IFDIR|0755;
-	bufstat.st_ino = KVSNS_ROOT_INODE;
-	bufstat.st_nlink = 2;
-	bufstat.st_uid = 0;
-	bufstat.st_gid = 0;
-	bufstat.st_atim.tv_sec = 0;
-	bufstat.st_mtim.tv_sec = 0;
-	bufstat.st_ctim.tv_sec = 0;
-
-	snprintf(k, KLEN, "%llu.stat", ino);
-	RC_WRAP(kvsal_set_stat, k, &bufstat);
+		root_stat.st_mode = S_IFDIR|0755;
+	root_stat.st_ino = KVSNS_ROOT_INODE;
+	root_stat.st_nlink = 2;
+	root_stat.st_uid = 0;
+	root_stat.st_gid = 0;
+	root_stat.st_atim.tv_sec = 0;
+	root_stat.st_mtim.tv_sec = 0;
+	root_stat.st_ctim.tv_sec = 0;
 
 	return 0;
 }

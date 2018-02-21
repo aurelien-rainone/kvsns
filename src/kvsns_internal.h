@@ -64,7 +64,24 @@ int kvsns_delall_xattr(kvsns_cred_t *cred, kvsns_ino_t *ino);
 
 void kvsns_init_s3_paths();
 void kvsns_free_s3_paths();
-int kvsns_get_s3_path(kvsns_ino_t *ino, int size, char *str);
-int kvsns_set_s3_path(kvsns_ino_t *ino, const char *str);
+/**
+ * @brief kvsns_get_s3_path get the s3 object path associated with an inode
+ * @param ino[IN] inode for which to retrieve the s3 object path
+ * @param size[IN] maximum writable size of the str buffer
+ * @param str[OUT] s3 object path
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_get_s3_path(kvsns_ino_t ino, int size, char *str);
+
+/**
+ * @brief kvsns_add_s3_path associates the path of an s3 object with the next
+ * inode number
+ * @param str[IN] s3 object path to store
+ * @param ino[OUT] associated inode number
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino);
+
+extern struct stat root_stat;
 
 #endif

@@ -255,6 +255,7 @@ int extstore_init(struct collection_item *cfg_items)
 		remove_files_in(ino_cache_dir);
 	}
 
+	kvsns_init_root(false);
 	return rc;
 }
 
