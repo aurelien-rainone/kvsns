@@ -289,6 +289,13 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 	if (!cred || !ino || !bufstat)
 		return -EINVAL;
 
+
+	if (*ino == KVSNS_ROOT_INODE) {
+		/* root inode is a special case */
+		memcpy(bufstat, &root_stat, sizeof(struct stat));
+		return 0;
+	}
+
 	snprintf(k, KLEN, "%llu.stat", *ino);
 	RC_WRAP(kvsal_get_stat, k, bufstat);
 

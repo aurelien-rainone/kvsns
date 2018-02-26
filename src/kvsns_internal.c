@@ -369,7 +369,7 @@ int kvsns_lookup_path(kvsns_cred_t *cred, kvsns_ino_t *parent, char *path,
 	return rc;
 }
 
-gint _ino_cmp_func (gconstpointer a, gconstpointer b)
+gint _ino_cmp_func (gconstpointer a, gconstpointer b, gpointer user_data)
 {
 	if (a < b)
 		return -1;
@@ -378,9 +378,11 @@ gint _ino_cmp_func (gconstpointer a, gconstpointer b)
 	return 0;
 }
 
+void noop_func(gpointer data) {}
+
 void kvsns_init_s3_paths()
 {
-	s3_paths = g_tree_new(_ino_cmp_func);
+	s3_paths = g_tree_new_full (_ino_cmp_func, NULL, noop_func, free);
 }
 
 void kvsns_free_s3_paths()
@@ -403,6 +405,8 @@ int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino)
 	if (!ino || !str)
 		return -EINVAL;
 	kvsns_next_inode(ino);
-	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) str);
+	char *path = malloc(strlen(str));
+	strcpy(path, str);
+	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) path);
 	return 0;
 }

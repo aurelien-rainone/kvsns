@@ -490,6 +490,9 @@ int extstore_getattr(kvsns_ino_t *ino,
 		memcpy(stat, &bufstat, sizeof(struct stat));
 	}
 
+	/* complete attrs filling */
+	stat->st_ino = *ino;
+
 	return 0;
 }
 
