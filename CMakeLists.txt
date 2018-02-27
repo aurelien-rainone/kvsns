@@ -40,13 +40,6 @@ add_subdirectory(kvsal/redis)
 set(KVSAL_LIBRARY kvsal)
 add_subdirectory(src)
 
-#add_subdirectory(kvsns)
-
-add_subdirectory(tests)
-add_subdirectory(kvsns_shell)
-add_subdirectory(kvsns_attach)
-add_subdirectory(kvsal_non_reg)
-
 # CPack / rpmbuild specific stuff
 set(CPACK_PACKAGE_FILE_NAME "libkvsns-Source" )
 set(CPACK_PACKAGE_VENDOR "KVSNS")
