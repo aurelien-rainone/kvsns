@@ -49,8 +49,6 @@ int growbuffer_append(growbuffer_t **gb, const char *data, int data_len);
 void growbuffer_read(growbuffer_t **gb, int amt, int *amt_ret, char *buffer);
 void growbuffer_destroy(growbuffer_t *gb);
 
-int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
-
 void remove_files_in(const char *dirname);
 
 char* printf_open_flags(char *dst, int flags, const size_t len);

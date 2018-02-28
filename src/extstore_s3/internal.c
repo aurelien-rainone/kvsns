@@ -1,4 +1,4 @@
-﻿/*
+/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include "../kvsns_utils.h"
+#include "../kvsns_internal.h"
 #include "internal.h"
 #include "inode_cache.h"
 #include "s3_common.h"
@@ -447,80 +448,4 @@ void remove_files_in(const char *dirname)
 		}
 	}
 	closedir(dir);
-}
-
-/**
- * Build path of s3 object and return object directory and filename.
- *
- * @param object - object inode.
- * @param obj_dir - [OUT] full s3 directory path.
- * @param obj_fname - [OUT] s3 object filename, empty for a directory.
- *
- * @note Returned directory path doesn't start with a '/' as libs3 requires
- * object keys to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a s3
- * requirement.
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
-{
-	char k[KLEN];
-	char v[VLEN];
-	kvsns_ino_t ino = object;
-	kvsns_ino_t root_ino = 0LL;
-	struct stat stat;
-
-	/* get root inode number */
-	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
-	sscanf(v, "%llu|", &root_ino);
-
-	/* init return values */
-	obj_dir[0] = '\0';
-	obj_fname[0] = '\0';
-
-	while (ino != root_ino) {
-
-		/* current inode name */
-		snprintf(k, KLEN, "%llu.name", ino);
-		RC_WRAP(kvsal_get_char, k, v);
-
-		snprintf(k, KLEN, "%llu.stat", ino);
-		RC_WRAP(kvsal_get_stat, k, &stat);
-		if (stat.st_mode & S_IFDIR) {
-			prepend(obj_dir, "/");
-			prepend(obj_dir, v);
-		} else {
-			strcpy(obj_fname, v);
-		}
-
-		/* get parent inode */
-		snprintf(k, KLEN, "%llu.parentdir", ino);
-		RC_WRAP(kvsal_get_char, k, v);
-		sscanf(v, "%llu|", &ino);
-	};
-
-	return 0;
-}
-
-/**
- * Build full path of S3 Object.
- *
- * @param object - object inode.
- * @param obj_path - [OUT] full S3 path
- * @param pathlen - [IN] max path length
- * 
- * @note Returned path doesn't start with a '/' as libs3 requires object keys
- * to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a S3 
- * requirement.
- *
- * @return 0 if successful, a negative "-errno" value in case of failure
- */
-int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
-{
-	char fname[VLEN];
-	RC_WRAP(build_s3_object_path, object, obj_path, fname);
-	strcat(obj_path, fname);
-	return 0;
 }

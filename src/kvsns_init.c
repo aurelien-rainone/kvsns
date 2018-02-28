@@ -93,7 +93,7 @@ int kvsns_init_root(int openbar)
 	kvsns_ino_t ino;
 
 	/* create root dir entry */
-	RC_WRAP(kvsns_add_s3_path, KVSNS_S3_ROOT_PATH, &ino);
+	RC_WRAP(kvsns_add_s3_path, KVSNS_S3_ROOT_PATH, 1, &ino);
 
 	/* create and set the root dir stat, the stats for the root dir are the
 	 *  only to not be stored on stable storage. The file corresponding to

@@ -53,7 +53,7 @@
 
 #include <kvsns/kvsal.h>
 
-#define KVSNS_S3_ROOT_PATH "/"
+#define KVSNS_S3_ROOT_PATH ""
 #define KVSNS_ROOT_INODE 2LL
 #define KVSNS_ROOT_UID 0
 
@@ -400,11 +400,12 @@ int kvsns_rename(kvsns_cred_t *cred, kvsns_ino_t *sino, char *sname,
  * @param parent - pointer to parent directory's inode.
  * @param name - name of the entry to be found.
  * @paran myino - [OUT] points to the found ino if successful.
+ * @paran myino - [INOUT] fill stats in case of successful lookup
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
 int kvsns_lookup(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
-		 kvsns_ino_t *myino);
+		 kvsns_ino_t *ino, struct stat *stat);
 
 /**
  * Finds the parent inode of an entry. 
@@ -501,8 +502,8 @@ int kvsns_opendir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dir_t *ddir);
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
-		 kvsns_dentry_t *dirent, int *size);
+int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir,
+		  kvsns_dentry_t *dirent, int *size);
 
 /**
  * Closes a directory opened by kvsns_opendir

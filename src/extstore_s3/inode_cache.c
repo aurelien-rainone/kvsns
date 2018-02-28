@@ -26,6 +26,8 @@
  */
 
 #include <gmodule.h>
+#include "../kvsns_utils.h"
+#include "../kvsns_internal.h"
 #include "internal.h"
 #include "s3_common.h"
 #include "inode_cache.h"
@@ -53,6 +55,7 @@ int build_cache_path(kvsns_ino_t object,
 int wino_close(kvsns_ino_t ino)
 {
 	int rc, fd;
+	int isdir;
 	gpointer wkey;
 	char s3_path[S3_MAX_KEY_SIZE];
 	char write_cache_path[MAXPATHLEN];
@@ -71,7 +74,7 @@ int wino_close(kvsns_ino_t ino)
 		goto remove_fd;
 	}
 
-	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	RC_WRAP(kvsns_get_s3_path, ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
 	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
 
 	/* override default s3 request config */
