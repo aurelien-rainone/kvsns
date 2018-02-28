@@ -81,13 +81,6 @@ int extstore_create(kvsns_ino_t object)
 
 int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len)
 {
-	/* XXX Look into another way of adding s3 specific keys in the KVS, the
-	 * inode.name entry. Couldn't this call to extstore_attach be the
-	 * perfect occastion to add those keys. If that is the case, this would
-	 * be way cleaner than modifying the libkvsns code and guarding the code
-	 * with KVSNS_S3 defines.
-	 */
-
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "%s ino=%llu objid=%s objid_len=%d",
 	       *ino, objid, objid_len);
 	return 0;
@@ -113,16 +106,16 @@ int extstore_init(struct collection_item *cfg_items)
 	if (rc != 0)
 		return -rc;
 	if (item != NULL) {
-	    char strlvl[64];
-	    kvsns_log_levels_t lvl;
-	    strncpy(strlvl, get_string_config_value(item, NULL), 64);
-	    rc = kvsns_parse_log_level(strlvl, &lvl);
-	    if (!rc) {
-		LogInfo(KVSNS_COMPONENT_EXTSTORE, "setting log level to %s", strlvl);
-		kvsns_set_log_level(KVSNS_COMPONENT_EXTSTORE, lvl);
-	    } else
-		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			"Can't parse log level, default unchanged");
+		char strlvl[64];
+		kvsns_log_levels_t lvl;
+		strncpy(strlvl, get_string_config_value(item, NULL), 64);
+		rc = kvsns_parse_log_level(strlvl, &lvl);
+		if (!rc) {
+			LogInfo(KVSNS_COMPONENT_EXTSTORE, "setting log level to %s", strlvl);
+			kvsns_set_log_level(KVSNS_COMPONENT_EXTSTORE, lvl);
+		} else
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
+				"Can't parse log level, default unchanged");
 	}
 
 	/* read location of data cache directory */
