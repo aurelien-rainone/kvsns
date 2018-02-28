@@ -207,7 +207,9 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 	cb_data.has_posix_stat = false;
 	memset(&cb_data.bufstat, 0, sizeof(struct stat));
 
-	if (!posix_stat || !has_posix_stat)
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "retrieving object stats key=%s", key);
+
+	if (!has_posix_stat)
 		return -EINVAL;
 
 	/* define callbacks */
@@ -225,20 +227,17 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 
 	if (cb_data.status != S3StatusOK) {
 		rc = s3status2posix_error(cb_data.status);
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
-			S3_get_status_name(cb_data.status),
-			cb_data.status, rc);
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "libs3 error errstr=%s s3sta=%d rc=%d key=%s",
+			S3_get_status_name(cb_data.status), cb_data.status, rc, key);
 		return rc;
 	}
 
 	*has_posix_stat = cb_data.has_posix_stat;
-	if (!cb_data.has_posix_stat) {
-		LogDebug(KVSNS_COMPONENT_EXTSTORE,
-			 "posix stats not present in object metadata s3key=%s",
-			 key);
-	} else {
+	if (!cb_data.has_posix_stat)
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"posix stats inexistent in object metadata key=%s", key);
+	else if (posix_stat)
 		memcpy(posix_stat, &cb_data.bufstat, sizeof(struct stat));
-	}
 
 	*mtime = cb_data.mtime;
 	*size = cb_data.size;
@@ -248,7 +247,7 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 
 int set_stats_object(const S3BucketContext *ctx, const char *key,
 		     extstore_s3_req_cfg_t *req_cfg,
-		     struct stat *posix_stat)
+		     const struct stat *posix_stat)
 {
 
 	return 0;

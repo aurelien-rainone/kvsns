@@ -27,6 +27,8 @@
 
 #include "internal.h"
 #include "s3_common.h"
+#include "../kvsns_utils.h"
+
 
 typedef struct list_bucket_cb_data_t
 {
@@ -34,7 +36,7 @@ typedef struct list_bucket_cb_data_t
 	uint64_t size;		/*< [OUT] size to be writte by callback */
 	int status;		/*< [OUT] request status */
 	bool truncated;		/*< [OUT] report request truncation */
-	char *prefix;		/*< [IN] prefix use for list request */
+	const char *prefix;	/*< [IN] prefix use for list request */
 	char next_marker[1024];	/*< [IN] next marker */
 	kvsns_dentry_t *dirent; /*< [INOUT] array of dir entries to be filled */
 	size_t ndirent;		/*< [IN] size of dir entries array */
@@ -84,7 +86,7 @@ static S3Status list_bucket_cb(int truncated, const char *next_marker,
 				   const char **commonprefix,
 				   void *cb_data_)
 {
-	int i, curdirent;
+	int i;
 	char *filename = NULL;
 	struct list_bucket_cb_data_t *cb_data;
 	cb_data = (struct list_bucket_cb_data_t*) (cb_data_);
@@ -103,7 +105,7 @@ static S3Status list_bucket_cb(int truncated, const char *next_marker,
 	else
 		cb_data->next_marker[0] = 0;
 
-	for (i = 0, curdirent = cb_data->ndirent; i < ncontents; i++, curdirent++) {
+	for (i = 0; i < ncontents; ++i, ++cb_data->ndirent) {
 		const S3ListBucketContent *content = &(contents[i]);
 		char timebuf[256];
 
@@ -115,8 +117,10 @@ static S3Status list_bucket_cb(int truncated, const char *next_marker,
 
 		filename = extract_s3_filename(cb_data->prefix, content->key);
 		if (filename) {
-			strncpy(cb_data->dirent[curdirent].name, filename, S3_MAX_KEY_SIZE);
-			cb_data->dirent[curdirent].stats.st_mode = S_IFREG|0777;
+			strncpy(&(cb_data->dirent[cb_data->ndirent].name[0]), filename, NAME_MAX);
+			/* we are just using the st_mode field as a file type marker for
+			 * now, proper stats will be defined later */
+			cb_data->dirent[cb_data->ndirent].stats.st_mode = S_IFREG;
 		}
 		else
 			LogCrit(KVSNS_COMPONENT_KVSNS,
@@ -125,14 +129,16 @@ static S3Status list_bucket_cb(int truncated, const char *next_marker,
 		printf("\n");
 	}
 
-	for (i = 0; i < ncommonprefix; i++, curdirent++) {
+	for (i = 0; i < ncommonprefix; ++i, ++cb_data->ndirent) {
 		printf("\nCommon Prefix: %s\n", commonprefix[i]);
 		filename = extract_s3_filename(cb_data->prefix, commonprefix[i]);
 		if (filename) {
+			/* we are just using the st_mode field as a file type marker for
+			 * now, proper stats will be defined later */
+			cb_data->dirent[cb_data->ndirent].stats.st_mode = S_IFDIR;
 			/* remove trailing directory slash */
-			cb_data->dirent[curdirent].stats.st_mode = S_IFDIR|0777;
 			filename[strlen(filename) - 1] = '\0';
-			strncpy(cb_data->dirent[curdirent].name, filename, S3_MAX_KEY_SIZE);
+			strncpy(&(cb_data->dirent[cb_data->ndirent].name[0]), filename, NAME_MAX);
 		}
 		else
 			LogCrit(KVSNS_COMPONENT_KVSNS,
@@ -155,16 +161,14 @@ int list_object(const S3BucketContext *ctx,
 	int interval = req_cfg->sleep_interval;
 	char delimiter[] = "/";
 	char *marker = NULL;
-	char *prefix;
 
 	if (!ctx || !req_cfg || !dirent || !ndirent)
 		return -EINVAL;
 
+	ASSERT(!strlen(key) || key[0] != '/');
+
 	/* don't ask more entries that we can stuff in dirent array */
 	const int maxkeys = *ndirent;
-
-	/* we don't want the first slash */
-	prefix = (char*) key + 1;
 
 	/* define callback data */
 	list_bucket_cb_data_t cb_data;
@@ -189,16 +193,16 @@ int list_object(const S3BucketContext *ctx,
 
 	cb_data.ndirent = 0;
 	cb_data.dirent = dirent;
-	cb_data.prefix = prefix;
+	cb_data.prefix = key;
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE,
 		"calling S3_list_bucket with prefix=%s next_marker=%s delim=%s",
-		 prefix, cb_data.next_marker, delimiter);
+		 key, cb_data.next_marker, delimiter);
 
 	do {
 		cb_data.truncated = 0;
 		do {
-			S3_list_bucket(ctx, prefix, cb_data.next_marker, delimiter,
+			S3_list_bucket(ctx, key, cb_data.next_marker, delimiter,
 				       maxkeys, 0, req_cfg->timeout,
 				       &list_bucket_handler, &cb_data);
 
