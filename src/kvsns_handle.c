@@ -41,6 +41,9 @@
 #include <kvsns/kvsns.h>
 #include <kvsns/extstore.h>
 #include "kvsns_internal.h"
+#include "extstore_s3/internal.h"
+#include "extstore_s3/s3_common.h"
+
 
 int kvsns_fsstat(kvsns_fsstat_t *stat)
 {
@@ -119,6 +122,7 @@ int kvsns_readlink(kvsns_cred_t *cred, kvsns_ino_t *lnk,
 
 int kvsns_rmdir(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name)
 {
+#if TOREWRITE
 	int rc;
 	char k[KLEN];
 	kvsns_ino_t ino = 0LL;
@@ -166,98 +170,55 @@ int kvsns_rmdir(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name)
 aborted:
 	kvsal_discard_transaction();
 	return rc;
+#endif
+	return 0;
 }
 
-int kvsns_opendir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dir_t *ddir)
+int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, int *size)
 {
-	char pattern[KLEN];
-	if (!cred || ! dir || !ddir)
-		return -EINVAL;
-	
-	snprintf(pattern, KLEN, "%llu.dentries.*", *dir);
-
-	ddir->ino = *dir;
-	return kvsal_fetch_list(pattern , &ddir->list);
-}
-
-int kvsns_closedir(kvsns_dir_t *dir)
-{
-	if (!dir)
-		return -EINVAL;
-
-	return kvsal_dispose_list(&dir->list);
-}
-
-int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
-		  kvsns_dentry_t *dirent, int *size)
-{
-	char pattern[KLEN];
-	char v[VLEN];
-	kvsal_item_t *items;
-	int i;
-	kvsns_ino_t ino = 0LL;
-	int rc;
-	unsigned long long lino;
+	int rc, i, isdir;
+	char dirpath[S3_MAX_KEY_SIZE] = "";
+	char keypath[S3_MAX_KEY_SIZE] = "";
 
 	if (!cred || !dir || !dirent || !size)
 		return -EINVAL;
 
-	RC_WRAP(kvsns_access, cred, &dir->ino, KVSNS_ACCESS_READ);
+	RC_WRAP(kvsns_access, cred, dir, KVSNS_ACCESS_READ);
+	RC_WRAP(kvsns_get_s3_path, *dir, S3_MAX_KEY_SIZE, dirpath, &isdir);
+	if (!isdir)
+		return -ENOTDIR;
 
-	items = (kvsal_item_t *)malloc(*size*sizeof(kvsal_item_t));
-	if (items == NULL)
-		return -ENOMEM;
-	memset(items, 0, *size*sizeof(kvsal_item_t));
-
-	memcpy(&lino, dir, sizeof(lino)); /* violent cast */
-	snprintf(pattern, KLEN, "%llu.dentries.*", lino);
-	rc = kvsal_get_list(&dir->list, (int)offset, size, items);
-	RC_WRAP_LABEL(rc, errout,
-		      kvsal_get_list, &dir->list, (int)offset, size, items);
-
-	for (i = 0; i < *size ; i++) {
-		sscanf(items[i].str, "%llu.dentries.%s\n",
-		       &ino, dirent[i].name);
-
-		RC_WRAP_LABEL(rc, errout, kvsal_get_char, items[i].str, v);
-
-		sscanf(v, "%llu", &dirent[i].inode);
-
-		RC_WRAP_LABEL(rc, errout, kvsns_getattr, cred, &dirent[i].inode,
-			 &dirent[i].stats);
+	/* s3 list bucket request, uses standard s3 api url params in order to
+	 * retrieve the required content. (directory-like) */
+	rc = list_object(&bucket_ctx, dirpath, &def_s3_req_cfg, dirent, size);
+	if (rc) {
+		LogCrit(KVSNS_COMPONENT_KVSNS,
+			"couldn't list directory object ino=%d s3path=%s rc=%d",
+			*dir, dirpath, rc);
+		return rc;
 	}
 
-	RC_WRAP_LABEL(rc, errout, kvsns_update_stat, &dir->ino, STAT_ATIME_SET);
+	/* ensure each entry gets an unique inode number */
+	for (i = 0; i < *size; ++i) {
+		snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s", dirpath, dirent[i].name);
+		isdir = S_ISDIR(dirent[i].stats.st_mode);
+		RC_WRAP(kvsns_get_s3_inode, keypath, true, &dirent[i].inode, &isdir);
+	}
 
-	free(items);
 	return 0;
-
-errout:
-	if (items)
-		free(items);
-
-	return rc;
 }
 
 int kvsns_lookup(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
-		kvsns_ino_t *ino)
+		 kvsns_ino_t *ino, struct stat *stat)
 {
-	char k[KLEN];
-	char v[VLEN];
-
 	if (!cred || !parent || !name || !ino)
 		return -EINVAL;
 
+	/* check client has read access on the directory */
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_READ);
 
-	snprintf(k, KLEN, "%llu.dentries.%s",
-		 *parent, name);
-
-	RC_WRAP(kvsal_get_char, k, v);
-
-	sscanf(v, "%llu", ino);
-
-	return 0;
+	/* the lookup sets the inode if it succeeds */
+	return extstore_lookup(parent, name, stat, ino);
 }
 
 int kvsns_lookupp(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_ino_t *parent)
@@ -289,12 +250,14 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 	if (!cred || !ino || !bufstat)
 		return -EINVAL;
 
-
+	/* root node stat are kept locally */
 	if (*ino == KVSNS_ROOT_INODE) {
 		/* root inode is a special case */
 		memcpy(bufstat, &root_stat, sizeof(struct stat));
 		return 0;
 	}
+
+	LogFatal(KVSNS_COMPONENT_KVSNS, "TO BE IMPLEMENTED, call extstore_getattr ici");
 
 	snprintf(k, KLEN, "%llu.stat", *ino);
 	RC_WRAP(kvsal_get_stat, k, bufstat);
@@ -384,6 +347,7 @@ int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
 int kvsns_link(kvsns_cred_t *cred, kvsns_ino_t *ino,
 	       kvsns_ino_t *dino, char *dname)
 {
+#if TOREWRITE
 	int rc;
 	char k[KLEN];
 	char v[VLEN];
@@ -435,10 +399,13 @@ int kvsns_link(kvsns_cred_t *cred, kvsns_ino_t *ino,
 aborted:
 	kvsal_discard_transaction();
 	return rc;
+#endif
+	return 0;
 }
 
 int kvsns_unlink(kvsns_cred_t *cred, kvsns_ino_t *dir, char *name)
 {
+#if TOREWRITE
 	int rc;
 	char k[KLEN];
 	char v[VLEN];
@@ -551,11 +518,14 @@ int kvsns_unlink(kvsns_cred_t *cred, kvsns_ino_t *dir, char *name)
 aborted:
 	kvsal_discard_transaction();
 	return rc;
+#endif
+	return 0;
 }
 
 int kvsns_rename(kvsns_cred_t *cred,  kvsns_ino_t *sino,
 		 char *sname, kvsns_ino_t *dino, char *dname)
 {
+#if TOREWRITE
 	int rc = 0;
 	char k[KLEN];
 	char v[VLEN];
@@ -632,6 +602,8 @@ int kvsns_rename(kvsns_cred_t *cred,  kvsns_ino_t *sino,
 aborted:
 	kvsal_discard_transaction();
 	return rc;
+#endif
+	return 0;
 }
 
 
