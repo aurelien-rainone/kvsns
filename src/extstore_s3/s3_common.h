@@ -94,7 +94,7 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 /*TODO: write documentation */
 int set_stats_object(const S3BucketContext *ctx, const char *key,
 		     extstore_s3_req_cfg_t *req_cfg,
-		     struct stat *posix_stat);
+		     const struct stat *posix_stat);
 
 /**
  * Upload a file to S3.
