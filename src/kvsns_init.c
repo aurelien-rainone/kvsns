@@ -63,12 +63,6 @@ int kvsns_start(const char *configpath)
 
 	kvsns_init_s3_paths();
 
-	rc = kvsal_init(cfg_items);
-	if (rc != 0) {
-		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't init kvsal");
-		return rc;
-	}
-
 	rc = extstore_init(cfg_items);
 	if (rc != 0) {
 		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't init extstore");
