@@ -146,6 +146,12 @@ int del_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg);
 
+
+int list_object(const S3BucketContext *ctx,
+		const char *key,
+		extstore_s3_req_cfg_t *req_cfg,
+		kvsns_dentry_t *dirent, int *ndirent);
+
 /* S3 internal functions */
 int should_retry(S3Status st, int retries, int interval);
 S3Status log_response_properties(const S3ResponseProperties *props, void *data);
