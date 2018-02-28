@@ -56,23 +56,41 @@ int kvsns_delall_xattr(kvsns_cred_t *cred, kvsns_ino_t *ino);
 
 void kvsns_init_s3_paths();
 void kvsns_free_s3_paths();
-/**
- * @brief kvsns_get_s3_path get the s3 object path associated with an inode
- * @param ino[IN] inode for which to retrieve the s3 object path
- * @param size[IN] maximum writable size of the str buffer
- * @param str[OUT] s3 object path
- * @return 0 for success or a negative errno value
- */
-int kvsns_get_s3_path(kvsns_ino_t ino, int size, char *str);
 
 /**
- * @brief kvsns_add_s3_path associates the path of an s3 object with the next
- * inode number
- * @param str[IN] s3 object path to store
- * @param ino[OUT] associated inode number
+ * @brief kvsns_get_s3_inode get the inode associated with an s3 path
+ * @param str[IN]	s3 path for which to retrieve the inode
+ * @param create[IN]	if create is true and the inode is not found, a new
+ *			inode number is created and associated to the s3 path.
+ *			If create is false and the inode is not found, -ENOENT
+ *			is returned.
+ * @param ino[OUT]	inode to retrieve
+ * @param isdir[INOUT]	IN used only when create is true. OUT indicates a directory
  * @return 0 for success or a negative errno value
  */
-int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino);
+int kvsns_get_s3_inode(const char *str, const int create,
+		       kvsns_ino_t *ino, int *isdir);
+
+/**
+ * @brief kvsns_get_s3_path get the s3 path associated with an inode
+ * @param ino[IN]	inode for which to retrieve the s3 path
+ * @param size[IN]	maximum writable size of the str buffer
+ * @param str[OUT]	s3 object path
+ * @param isdir[OUT]	indicates if the inode is a directory
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_get_s3_path(kvsns_ino_t ino, const int size, char *str, int *isdir);
+
+/**
+ * @brief kvsns_add_s3_path associates the s3 path with an unique inode number
+ * @param str[IN]	s3 path to store
+ * @param isdir[IN]	indicates if the inode is a directory
+ * @param ino[OUT]	associated inode number
+ *
+ * @note paths should neither have a leading nor trailing slashes
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_add_s3_path(const char *str, const int isdir, kvsns_ino_t *ino);
 
 extern struct stat root_stat;
 

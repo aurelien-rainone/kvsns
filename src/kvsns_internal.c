@@ -1,4 +1,4 @@
-/*
+﻿/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) CEA, 2016
@@ -29,7 +29,6 @@
  * KVSNS: set of internal functions
  */
 
-
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -42,7 +41,14 @@
 #include "kvsns_internal.h"
 #include <gmodule.h>
 
-static GTree *s3_paths;
+typedef struct s3_path_ {
+	kvsns_ino_t ino;
+	char *path;
+	int isdir;
+} s3_path_t;
+
+static GTree *s3_paths;		/*< s3_path_t indexed by inode */
+static GTree *s3_inodes;	/*< s3_path_t indexed by path (char*) */
 static kvsns_ino_t next_ino = KVSNS_ROOT_INODE;
 struct stat root_stat = {};
 
@@ -164,12 +170,11 @@ int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 	if ((type == KVSNS_SYMLINK) && (lnk == NULL))
 		return -EINVAL;
 
-	rc = kvsns_lookup(cred, parent, name, new_entry);
+	rc = kvsns_lookup(cred, parent, name, new_entry, &parent_stat);
 	if (rc == 0)
 		return -EEXIST;
 
 	kvsns_next_inode(new_entry);
-	RC_WRAP(kvsns_get_stat, parent, &parent_stat);
 
 	RC_WRAP(kvsal_begin_transaction);
 
@@ -333,42 +338,6 @@ int kvsns_set_stat(kvsns_ino_t *ino, struct stat *bufstat)
 	return kvsal_set_stat(k, bufstat);
 }
 
-int kvsns_lookup_path(kvsns_cred_t *cred, kvsns_ino_t *parent, char *path,
-		       kvsns_ino_t *ino)
-{
-	char *saveptr;
-	char *str;
-	char *token;
-	kvsns_ino_t iter_ino = 0LL;
-	kvsns_ino_t *iter = NULL;
-	int j = 0;
-	int rc = 0;
-
-	memcpy(&iter_ino, parent, sizeof(kvsns_ino_t));
-	iter = &iter_ino;
-	for (j = 1, str = path; ; j++, str = NULL) {
-		memcpy(parent, ino, sizeof(kvsns_ino_t));
-		token = strtok_r(str, "/", &saveptr);
-		if (token == NULL)
-			break;
-
-		rc = kvsns_lookup(cred, iter, token, ino);
-		if (rc != 0) {
-			if (rc == -ENOENT)
-				break;
-			else
-				return rc;
-		}
-
-		iter = ino;
-	}
-
-	if (token != NULL) /* If non-existing file should be created */
-		strcpy(path, token);
-
-	return rc;
-}
-
 gint _ino_cmp_func (gconstpointer a, gconstpointer b, gpointer user_data)
 {
 	if (a < b)
@@ -378,35 +347,148 @@ gint _ino_cmp_func (gconstpointer a, gconstpointer b, gpointer user_data)
 	return 0;
 }
 
+gint _path_cmp_func (gconstpointer a, gconstpointer b)
+{
+	return strcmp((const char*) a, (const char*) b);
+}
+
+void _free_s3_path(gpointer data)
+{
+	s3_path_t *p = data;
+	free(p->path);
+	p->path = NULL;
+	p->ino = 0;
+	free(p);
+}
+
 void noop_func(gpointer data) {}
+
+
+/*
+ * S3 path storage
+ * - paths are stored without the leading '/'.
+ * - dir paths are stored with the trailing slash, but it's kvsns_add_s3_path
+ *   function that takes care of storing the path with the trailing slash (by
+ *   setting`is_dir` to true)
+ */
 
 void kvsns_init_s3_paths()
 {
-	s3_paths = g_tree_new_full (_ino_cmp_func, NULL, noop_func, free);
+	s3_paths = g_tree_new_full (_ino_cmp_func, NULL, noop_func, _free_s3_path);
+	s3_inodes = g_tree_new (_path_cmp_func);
 }
 
 void kvsns_free_s3_paths()
 {
 	g_tree_destroy(s3_paths);
+	g_tree_destroy(s3_inodes);
 	s3_paths = NULL;
+	s3_inodes = NULL;
 }
 
-int kvsns_get_s3_path(kvsns_ino_t ino, int size, char *str)
+
+/**
+ * @brief kvsns_get_s3_inode get the inode associated with an s3 path
+ * @param str[IN]	s3 path for which to retrieve the inode
+ * @param create[IN]	if create is true and the inode is not found, a new
+ *			inode number is created and associated to the s3 path.
+ *			If create is false and the inode is not found, -ENOENT
+ *			is returned.
+ * @param ino[OUT]	inode to retrieve
+ * @param isdir[INOUT]	IN used only when create is true. OUT indicates a directory
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_get_s3_inode(const char *str, const int create,
+		       kvsns_ino_t *ino, int *isdir)
 {
-	gpointer s3_path = g_tree_lookup(s3_paths, (gconstpointer) ino);
-	if (!s3_path)
-		return -ENOENT;
-	strncpy(str, s3_path, size);
+	s3_path_t *s3_path;
+
+	if (!str || !ino || !isdir)
+		return -EINVAL;
+
+	ASSERT(!strlen(str) || (str[0] != '/'));
+	ASSERT(!strlen(str) || (str[strlen(str)-1] != '/'));
+
+	s3_path = (s3_path_t*) g_tree_lookup(s3_inodes, (gconstpointer) str);
+	if (!s3_path) {
+		if (!create)
+			return -ENOENT;
+		/* add this path with the provided `isdir` value */
+		return kvsns_add_s3_path(str, *isdir, ino);
+	}
+
+	*ino = s3_path->ino;
+	*isdir = s3_path->isdir;
 	return 0;
 }
 
-int kvsns_add_s3_path(const char *str, kvsns_ino_t *ino)
+/**
+ * @brief kvsns_get_s3_path get the s3 path associated with an inode
+ * @param ino[IN]	inode for which to retrieve the s3 path
+ * @param size[IN]	maximum writable size of the str buffer
+ * @param str[OUT]	s3 object path
+ * @param isdir[OUT]	indicates if the inode is a directory
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_get_s3_path(kvsns_ino_t ino, const int size, char *str, int *isdir)
 {
+	s3_path_t *s3_path;
+
+	if (!str || !ino || !size || !isdir)
+		return -EINVAL;
+
+	s3_path = (s3_path_t*) g_tree_lookup(s3_paths, (gconstpointer) ino);
+	if (!s3_path)
+		return -ENOENT;
+
+	strncpy(str, s3_path->path, size);
+	*isdir = s3_path->isdir;
+	return 0;
+}
+
+/**
+ * @brief kvsns_add_s3_path associates the s3 path with an unique inode number
+ * @param str[IN]	s3 path to store
+ * @param isdir[IN]	indicates if the inode is a directory
+ * @param ino[OUT]	associated inode number
+ *
+ * @note paths should neither have a leading nor trailing slashes
+ * @return 0 for success or a negative errno value
+ */
+int kvsns_add_s3_path(const char *str, const int isdir, kvsns_ino_t *ino)
+{
+	s3_path_t *s3_path;
+	size_t len;
+	/* added paths should be */
 	if (!ino || !str)
 		return -EINVAL;
+
+	/* increment inode counter */
 	kvsns_next_inode(ino);
-	char *path = malloc(strlen(str));
-	strcpy(path, str);
-	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) path);
+
+	/* no leading nor trailing slashes */
+	ASSERT(!strlen(str) || (str[0] != '/'));
+	ASSERT(!strlen(str) || (str[strlen(str) - 1] != '/'));
+
+	/* allocate a s3_path_t entry, containing its own copy of the char
+	 * array representing the s3 key */
+	s3_path = malloc(sizeof(s3_path_t));
+	memset(s3_path, 0, sizeof(s3_path_t));
+	len = strlen(str) + 1;
+	s3_path->path = malloc(sizeof(char) * len);
+	memset(s3_path->path, 0, sizeof(char) * len);
+	strcpy(s3_path->path, str);
+	s3_path->isdir = isdir;
+	s3_path->ino = *ino;
+
+	/* s3_paths: fast s3 key lookup by inode */
+	g_tree_insert(s3_paths, (gpointer) *ino, (gpointer) s3_path);
+	/* s3_inodes: fast inode lookpu by s3 key */
+	g_tree_insert(s3_inodes, (gpointer) s3_path->path, (gpointer) s3_path);
+
+	LogInfo(KVSNS_COMPONENT_KVSNS,
+		 "associated s3 path and inode path=%s ino=%d isdir=%d",
+		 s3_path->path, *ino, s3_path->isdir);
+
 	return 0;
 }
