@@ -205,6 +205,12 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 		RC_WRAP(kvsns_get_s3_inode, keypath, true, &dirent[i].inode, &isdir);
 	}
 
+	/* TODO: ensure there are empty files for each directories listed in
+	 * 'commonPrefix' field of s3 response, as they are not create
+	 * automatically. If a client created a dir1/dir2/file by other means (a
+	 * cli for example) s3 will lists dir1 and dir2 as directories even if
+	 * neither dir1/ nor dir1/dir2/ exist */
+
 	return 0;
 }
 
@@ -243,42 +249,24 @@ int kvsns_lookupp(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_ino_t *parent)
 
 int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 {
-	struct stat data_stat;
-	char k[KLEN];
 	int rc;
 
 	if (!cred || !ino || !bufstat)
 		return -EINVAL;
 
-	/* root node stat are kept locally */
+	/* root node attrs are managed in-memory */
 	if (*ino == KVSNS_ROOT_INODE) {
 		/* root inode is a special case */
 		memcpy(bufstat, &root_stat, sizeof(struct stat));
 		return 0;
 	}
 
-	LogFatal(KVSNS_COMPONENT_KVSNS, "TO BE IMPLEMENTED, call extstore_getattr ici");
-
-	snprintf(k, KLEN, "%llu.stat", *ino);
-	RC_WRAP(kvsal_get_stat, k, bufstat);
-
-	if (S_ISREG(bufstat->st_mode)) {
-		/* for file, information is to be retrieved form extstore */
-		rc = extstore_getattr(ino, &data_stat);
-		if (rc != 0) {
-			if (rc == -ENOENT)
-				return 0; /* no associated data */
-			else
-				return rc;
-		}
-
-		/* found associated data and store metadata */
-		bufstat->st_size = data_stat.st_size;
-		bufstat->st_mtime = data_stat.st_mtime;
-		bufstat->st_atime = data_stat.st_atime;
+	rc = extstore_getattr(ino, bufstat);
+	if (rc) {
+		LogCrit(KVSNS_COMPONENT_KVSNS,
+			"couldn't get attributes rc=%d ino=%lu", rc, *ino);
 	}
-
-	return 0;
+	return rc;
 }
 
 int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,

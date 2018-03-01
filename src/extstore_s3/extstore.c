@@ -452,7 +452,6 @@ int extstore_getattr(kvsns_ino_t *ino,
 		 * accurately.  */
 		struct stat fdsta;
 		fstat((int) ((intptr_t) key), &fdsta);
-		memset(&fdsta, 0, sizeof(struct stat));
 		extstore_fill_stats(&fdsta, *ino, 0, 0, 0);
 		stat->st_size = fdsta.st_size;
 		stat->st_mtime = fdsta.st_mtime;
@@ -461,41 +460,53 @@ int extstore_getattr(kvsns_ino_t *ino,
 	}
 
 	/* perform HEAD on s3 object*/
-	bool posixified = false;
-	rc = get_stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+	if (isdir)
+		strncat(keypath, "/", S3_MAX_KEY_SIZE);
+	rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
 			      &mtime, &size, stat, &posixified);
-	if (rc != 0) {
+	if (rc != 0)
 		return rc;
-	}
+
 	if (!posixified) {
 		/* "posixify" this s3 object */
 		struct stat bufstat;
-		bufstat.st_size = size;
-		/* TODO: set default stat (look in xxx_new_entry_xxx )*/
-		/* TODO: manage mode (dir/file) */
-		bool openbar = false;
-		if (openbar != 0)
-			bufstat.st_mode = S_IFDIR|0777;
-		else
-			bufstat.st_mode = S_IFDIR|0755;
-		bufstat.st_ino = KVSNS_ROOT_INODE;
-		bufstat.st_nlink = 2;
-		bufstat.st_uid = 0;
-		bufstat.st_gid = 0;
-		bufstat.st_mtime = mtime;
-		bufstat.st_atime = mtime;
-		bufstat.st_ctime = mtime;
-
-		rc = set_stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+		extstore_fill_stats(&bufstat, *ino, mtime, isdir, size);
+		rc = set_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
 				      &bufstat);
-		if (rc != 0)
+		if (rc != 0) {
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
+				"couldn't set posix attrs key=%s rc=%d ino=%lu",
+				keypath, rc, *ino);
 			return rc;
+		}
 
 		memcpy(stat, &bufstat, sizeof(struct stat));
 	}
 
-	/* complete attrs filling */
-	stat->st_ino = *ino;
+	return 0;
+}
+
+int extstore_setattr(kvsns_ino_t *ino,
+		     const struct stat *stat)
+{
+	int rc = 0;
+	int isdir;
+	char keypath[S3_MAX_KEY_SIZE];
+
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
+
+	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
+
+	/* do not set attributes of a currently 'write-opened' inode */
+	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
+	if (key != NULL) {
+		return 0;
+	}
+
+	rc = set_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+			      stat);
+	if (rc != 0)
+		return rc;
 
 	return 0;
 }
@@ -542,55 +553,64 @@ void extstore_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
 	}
 }
 
-int extstore_lookup(kvsns_ino_t *parent, char *name, struct stat *stat, kvsns_ino_t *ino)
+int extstore_lookup(kvsns_ino_t *parent, char *name,
+		    struct stat *stat, kvsns_ino_t *ino)
 {
 	int rc;
 	int isdir;
 	time_t mtime;
 	uint64_t size;
+	bool posixified;
 	char dirpath[S3_MAX_KEY_SIZE] = "";
 	char keypath[S3_MAX_KEY_SIZE] = "";
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "parent=%llu name=%s", *parent, name);
 
-	rc = kvsns_get_s3_path(*parent, S3_MAX_KEY_SIZE, dirpath, &isdir);
-	if (rc)
-		return rc;
+	RC_WRAP(kvsns_get_s3_path, *parent, S3_MAX_KEY_SIZE, dirpath, &isdir);
 
 	snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s", dirpath, name);
+	if (!kvsns_get_s3_inode(keypath, false, ino, &isdir)) {
+		/* this file already has an inode */
+		return extstore_getattr(ino, stat);
+	}
 
-	/* perform HEAD on object as S3 file */
-	bool posixified = false;
+	/* Either this file doesn't exist or it's the first time we see it.
+	 * It may also be a directory, in which case we'll need to query the
+	 * same s3 key with a trailing slash */
+
+	/* file lookup */
+	isdir = 0;
 	rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
 			      &mtime, &size, stat, &posixified);
-	if (rc) {
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "rc=%d parent=%llu name=%s",
-			rc, *parent, name);
 
-		/* perform HEAD on object as S3 dir */
-		posixified = false;
+	if (rc == -ENOENT) {
+		/* directory lookup (append a slash to s3 key)*/
+		isdir = 1;
 		strncat(keypath, "/", S3_MAX_KEY_SIZE);
 		rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
-					  &mtime, &size, stat, &posixified);
-		if (rc) {
-			LogWarn(KVSNS_COMPONENT_EXTSTORE, "rc=%d parent=%llu name=%s/",
-				rc, *parent, name);
+				      &mtime, &size, stat, &posixified);
+		if (rc == -ENOENT)
 			return rc;
-		}
-	}
+		if (rc)
+			LogWarn(KVSNS_COMPONENT_EXTSTORE,
+				"directory lookup failed rc=%d parent=%llu key=%s",
+				rc, *parent, keypath);
+			return rc;
 
-	if (!posixified) {
-		/* do it */
-	}
+		/* remove the trailing slash we just added */
+		keypath[strlen(keypath) - 1] = '\0';
 
-	/* ensure this entry gets an unique inode number */
-	isdir = S_ISDIR(stat->st_mode);
-	RC_WRAP(kvsns_get_s3_inode, keypath, true, ino, &isdir);
+	} else if (rc)
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"file lookup failed rc=%d parent=%llu key=%s",
+			rc, *parent, keypath);
+
+	/* let's get this file an inode number */
+	RC_WRAP(kvsns_add_s3_path, keypath, isdir, ino);
 	return rc;
 }
 
-int extstore_open(kvsns_ino_t ino,
-		  int flags)
+int extstore_open(kvsns_ino_t ino, int flags)
 {
 	char strflags[1024] = "";
 
@@ -600,16 +620,15 @@ int extstore_open(kvsns_ino_t ino,
 		/* didn't pass by create before open, we probably want to read
 		 * that file */
 		LogDebug(KVSNS_COMPONENT_EXTSTORE,
-			"opening in order to read? ino=%d flags=o%o flagsstr=%s", ino, flags,
-			 printf_open_flags(strflags, flags, 1024));
+			"opening in order to read? ino=%d flags=o%o flagsstr=%s",
+			ino, flags, printf_open_flags(strflags, flags, 1024));
 		return -ENOENT;
-	} else {
+	} 
 
-		/* found a file descriptor */
-		LogDebug(KVSNS_COMPONENT_EXTSTORE,
-			"opening in order to write/upload? ino=%d flags=o%o flagsstr=%s", ino, flags,
-			 printf_open_flags(strflags, flags, 1024));
-	}
+	/* found a file descriptor */
+	LogDebug(KVSNS_COMPONENT_EXTSTORE,
+		"opening in order to write/upload? ino=%d flags=o%o flagsstr=%s",
+		ino, flags, printf_open_flags(strflags, flags, 1024));
 
 	return 0;
 }

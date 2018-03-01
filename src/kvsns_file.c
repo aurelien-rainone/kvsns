@@ -164,7 +164,7 @@ int kvsns_openat(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 	if (!cred || !parent || !name || !fd)
 		return -EINVAL;
 
-	RC_WRAP(kvsns_lookup, cred, parent, name, &ino);
+	RC_WRAP(kvsns_lookup, cred, parent, name, &ino, NULL);
 
 	return kvsns_open(cred, &ino, flags, mode, fd);
 }
