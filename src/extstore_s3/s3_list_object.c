@@ -146,8 +146,6 @@ static S3Status list_bucket_cb(int truncated, const char *next_marker,
 				 cb_data->prefix, commonprefix[i]);
 	}
 
-	cb_data->ndirent += curdirent;
-
 	return S3StatusOK;
 }
 
