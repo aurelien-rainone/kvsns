@@ -386,7 +386,6 @@ void kvsns_free_s3_paths()
 	s3_inodes = NULL;
 }
 
-
 /**
  * @brief kvsns_get_s3_inode get the inode associated with an s3 path
  * @param str[IN]	s3 path for which to retrieve the inode
