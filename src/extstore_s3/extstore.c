@@ -37,6 +37,9 @@
 #include "mru.h"
 
 
+void extstore_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
+			 int isdir, size_t size);
+
 int extstore_create(kvsns_ino_t object)
 {
 	int rc;
@@ -446,10 +449,11 @@ int extstore_getattr(kvsns_ino_t *ino,
 	if (key != NULL) {
 		/* In that case temporarily report the attrs of the cached file.
 		 * As soon as the upload will be completed, s3 will report it
-		 * accurrately.
-		 */
+		 * accurately.  */
 		struct stat fdsta;
 		fstat((int) ((intptr_t) key), &fdsta);
+		memset(&fdsta, 0, sizeof(struct stat));
+		extstore_fill_stats(&fdsta, *ino, 0, 0, 0);
 		stat->st_size = fdsta.st_size;
 		stat->st_mtime = fdsta.st_mtime;
 		stat->st_atime = fdsta.st_atime;
@@ -496,6 +500,47 @@ int extstore_getattr(kvsns_ino_t *ino,
 	return 0;
 }
 
+void extstore_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
+			 int isdir, size_t size)
+{
+	const bool openbar = true;
+	const int def_dirmode = 0755;
+	const int def_filemode = 0644;
+	const int def_dirmode_open = 0777;
+	const int def_filemode_open = 0666;
+	int dirmode, filemode;
+	if (openbar) {
+		dirmode = def_dirmode_open;	
+		filemode = def_filemode_open;
+	} else {
+		dirmode = def_dirmode;
+		filemode = def_filemode;
+	}
+
+	memset(stat, 0, sizeof(struct stat));
+	stat->st_uid = 0;
+	stat->st_gid = 0;
+	stat->st_ino = ino;
+
+	stat->st_atim.tv_sec = mtime;
+	stat->st_atim.tv_nsec = 0; /* time_t only hold seconds */
+
+	stat->st_mtim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_mtim.tv_nsec = stat->st_atim.tv_nsec;
+
+	stat->st_ctim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_ctim.tv_nsec = stat->st_atim.tv_nsec;
+
+	if (isdir) {
+		stat->st_mode = S_IFDIR|dirmode;
+		stat->st_nlink = 2;
+		stat->st_size = 0;
+	} else {
+		stat->st_mode = S_IFREG|filemode;
+		stat->st_nlink = 1;
+		stat->st_size = size;
+	}
+}
 
 int extstore_lookup(kvsns_ino_t *parent, char *name, struct stat *stat, kvsns_ino_t *ino)
 {
