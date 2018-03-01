@@ -42,14 +42,15 @@ int extstore_create(kvsns_ino_t object)
 	int rc;
 	int fd;
 	int isdir;
-	char s3_path[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE];
 	char cache_path[MAXPATHLEN];
 
-	RC_WRAP(kvsns_get_s3_path, object, S3_MAX_KEY_SIZE, s3_path, &isdir);
+	RC_WRAP(kvsns_get_s3_path, object, S3_MAX_KEY_SIZE, keypath, &isdir);
 
 	build_cache_path(object, cache_path, write_cache_t, MAXPATHLEN);
 
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu s3_path=%s cache=%s", object, s3_path, cache_path);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu key=%s cache=%s",
+		 object, keypath, cache_path);
 
 	/* for safety, remove the cache file and start anew */
 	rc = remove(cache_path);
@@ -96,8 +97,6 @@ int extstore_init(struct collection_item *cfg_items)
 
 	if (cfg_items == NULL)
 		return -EINVAL;
-
-	RC_WRAP(kvsal_init, cfg_items);
 
 	/* set log level from inifile */
 	item = NULL;
@@ -283,17 +282,17 @@ int extstore_del(kvsns_ino_t *ino)
 {
 	int rc;
 	int isdir;
-	char s3_path[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE];
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
-	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
+	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 
-	rc = del_object(&bucket_ctx, s3_path, &def_s3_req_cfg);
+	rc = del_object(&bucket_ctx, keypath, &def_s3_req_cfg);
 	if (rc != 0) {
 		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			"Couldn't delete object ino=%lu s3key=%s",
-			*ino, s3_path);
+			"Couldn't delete object ino=%lu key=%s",
+			*ino, keypath);
 	}
 	return rc;
 }
@@ -312,7 +311,7 @@ int extstore_read(kvsns_ino_t *ino,
 	uint64_t size;
 	ssize_t bytes_read;
 	char cache_path[MAXPATHLEN];
-	char s3_path[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE];
 	build_cache_path(*ino, cache_path, read_cache_t, MAXPATHLEN);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu",
@@ -327,14 +326,14 @@ int extstore_read(kvsns_ino_t *ino,
 		if (!mru_mark_item(&rino_mru, mru_key_cmp_func, (void*) *ino)) {
 
 			/* File is not cached locally, we must download it.*/
-			RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
+			RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 
-			rc = get_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+			rc = get_object(&bucket_ctx, keypath, &def_s3_req_cfg,
 					cache_path, &mtime, &size);
 			if (rc != 0) {
 				LogWarn(KVSNS_COMPONENT_EXTSTORE,
-					"Can't download s3 object ino=%lu s3_path=%s rc=%d",
-					*ino, s3_path, rc);
+					"Can't download s3 object ino=%lu key=%s rc=%d",
+					*ino, keypath, rc);
 				return rc;
 			}
 
@@ -388,14 +387,14 @@ int extstore_write(kvsns_ino_t *ino,
 	int fd;
 	int isdir;
 	ssize_t bytes_written;
-	char s3_path[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE];
 	char cache_path[MAXPATHLEN];
 
-	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
+	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 	build_cache_path(*ino, cache_path, write_cache_t, MAXPATHLEN);
 
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
-		 *ino, offset, buffer_size, s3_path, stat->st_size, cache_path);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu key=%s s3sz=%lu cache=%s",
+		 *ino, offset, buffer_size, keypath, stat->st_size, cache_path);
 
 
 	/* retrieve file descriptor */
@@ -431,12 +430,12 @@ int extstore_getattr(kvsns_ino_t *ino,
 	int isdir;
 	time_t mtime;
 	uint64_t size;
-	char s3_path[S3_MAX_KEY_SIZE];
+	bool posixified;
+	char keypath[S3_MAX_KEY_SIZE];
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
-	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
-	ASSERT(s3_path[0] == '/');
+	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 
 	/* check if a cached file descriptor exists for this inode, that would
 	 * mean we currently have the file content cached and opened, so its
@@ -574,11 +573,11 @@ int extstore_close(kvsns_ino_t ino)
 {
 	int rc;
 	int isdir;
-	char s3_path[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE];
 
-	RC_WRAP(kvsns_get_s3_path, ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
+	RC_WRAP(kvsns_get_s3_path, ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d s3key=%s", ino, s3_path);
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, keypath);
 
 	/* an inode should not be located in both read and write caches */
 	rc = wino_close(ino);
