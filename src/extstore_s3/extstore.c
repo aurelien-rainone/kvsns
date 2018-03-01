@@ -45,8 +45,8 @@ int extstore_create(kvsns_ino_t object)
 	int rc;
 	int fd;
 	int isdir;
-	char keypath[S3_MAX_KEY_SIZE];
-	char cache_path[MAXPATHLEN];
+	char keypath[S3_MAX_KEY_SIZE] = "";
+	char cache_path[MAXPATHLEN] = "";
 
 	RC_WRAP(kvsns_get_s3_path, object, S3_MAX_KEY_SIZE, keypath, &isdir);
 
@@ -285,7 +285,7 @@ int extstore_del(kvsns_ino_t *ino)
 {
 	int rc;
 	int isdir;
-	char keypath[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE] = "";
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
@@ -313,8 +313,8 @@ int extstore_read(kvsns_ino_t *ino,
 	time_t mtime;
 	uint64_t size;
 	ssize_t bytes_read;
-	char cache_path[MAXPATHLEN];
-	char keypath[S3_MAX_KEY_SIZE];
+	char cache_path[MAXPATHLEN] = "";
+	char keypath[S3_MAX_KEY_SIZE] = "";
 	build_cache_path(*ino, cache_path, read_cache_t, MAXPATHLEN);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu",
@@ -390,8 +390,8 @@ int extstore_write(kvsns_ino_t *ino,
 	int fd;
 	int isdir;
 	ssize_t bytes_written;
-	char keypath[S3_MAX_KEY_SIZE];
-	char cache_path[MAXPATHLEN];
+	char keypath[S3_MAX_KEY_SIZE] = "";
+	char cache_path[MAXPATHLEN] = "";
 
 	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 	build_cache_path(*ino, cache_path, write_cache_t, MAXPATHLEN);
@@ -434,7 +434,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	time_t mtime;
 	uint64_t size;
 	bool posixified;
-	char keypath[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE] = "";
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
@@ -491,7 +491,7 @@ int extstore_setattr(kvsns_ino_t *ino,
 {
 	int rc = 0;
 	int isdir;
-	char keypath[S3_MAX_KEY_SIZE];
+	char keypath[S3_MAX_KEY_SIZE] = "";
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
