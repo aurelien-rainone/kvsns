@@ -435,6 +435,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	uint64_t size;
 	bool posixified;
 	char keypath[S3_MAX_KEY_SIZE] = "";
+	char s3keypath[S3_MAX_KEY_SIZE] = "";
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
@@ -460,9 +461,8 @@ int extstore_getattr(kvsns_ino_t *ino,
 	}
 
 	/* perform HEAD on s3 object*/
-	if (isdir)
-		strncat(keypath, "/", S3_MAX_KEY_SIZE);
-	rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+	formats3key(&s3keypath[0], S3_MAX_KEY_SIZE, "", keypath, isdir);
+	rc = get_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 			      &mtime, &size, stat, &posixified);
 	if (rc != 0)
 		return rc;
@@ -471,7 +471,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 		/* "posixify" this s3 object */
 		struct stat bufstat;
 		extstore_fill_stats(&bufstat, *ino, mtime, isdir, size);
-		rc = set_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+		rc = set_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 				      &bufstat);
 		if (rc != 0) {
 			LogCrit(KVSNS_COMPONENT_EXTSTORE,
@@ -563,42 +563,49 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 	bool posixified;
 	char dirpath[S3_MAX_KEY_SIZE] = "";
 	char keypath[S3_MAX_KEY_SIZE] = "";
-	char sep[2] = {'\0', '\0'};
+	char s3keypath[S3_MAX_KEY_SIZE] = "";
+	/*char sep[2] = {'\0', '\0'};*/
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "parent=%llu name=%s", *parent, name);
 
+	if (!strcmp(name, "dir1")) {
+		printf("debug stop");
+	}
+
 	RC_WRAP(kvsns_get_s3_path, *parent, S3_MAX_KEY_SIZE, dirpath, &isdir);
+
+	isdir = 0;
+	formats3key(&keypath[0], S3_MAX_KEY_SIZE, dirpath, name, isdir);
 
 	/* forge the s3 key path (with special treament for root dir, that
 	 * should not be represented by a slash */
-	if (isdir && (*parent != KVSNS_ROOT_INODE))
-		sep[0] = '/';
-	snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s%s", dirpath, sep, name);
+	/*if (isdir && (*parent != KVSNS_ROOT_INODE))*/
+		/*sep[0] = '/';*/
+	/*snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s%s", dirpath, sep, name);*/
 
-	if (!kvsns_get_s3_inode(keypath, false, ino, &isdir)) {
+	/*path2s3path(s3key, S3_MAX_KEY_SIZE, dirpath, isdir, *parent != KVSNS_ROOT_INODE);*/
+
+	if (!kvsns_get_s3_inode(keypath, false, ino, &isdir))
 		/* this file already has an inode */
 		return extstore_getattr(ino, stat);
-	}
 
 	/* Either this file doesn't exist or it's the first time we see it.
 	 * It may also be a directory, in which case we'll need to query the
 	 * same s3 key with a trailing slash */
 
 	/* file lookup */
-	isdir = 0;
-	rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+	/*isdir = 0;*/
+	formats3key(&s3keypath[0], S3_MAX_KEY_SIZE, dirpath, name, isdir);
+	rc = get_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 			      &mtime, &size, stat, &posixified);
 
 	if (rc == -ENOENT) {
 		/* directory lookup (append a slash to s3 key)*/
 		isdir = 1;
-		strncat(keypath, "/", S3_MAX_KEY_SIZE);
-		rc = get_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+		formats3key(&s3keypath[0], S3_MAX_KEY_SIZE, dirpath, name, isdir);
+		rc = get_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 				      &mtime, &size, stat, &posixified);
-		if (!rc)
-			/* remove the trailing slash we just added */
-			keypath[strlen(keypath) - 1] = '\0';
-		else {
+		if (rc) {
 			if (rc != -ENOENT)
 				LogWarn(KVSNS_COMPONENT_EXTSTORE,
 					"directory lookup failed rc=%d parent=%llu key=%s",
@@ -618,13 +625,8 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 		struct stat bufstat;
 		extstore_fill_stats(&bufstat, *ino, mtime, isdir, size);
 
-		if (isdir)
-			strncat(keypath, "/", S3_MAX_KEY_SIZE);
-		rc = set_stats_object(&bucket_ctx, keypath, &def_s3_req_cfg,
+		rc = set_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 				      &bufstat);
-		if (isdir)
-			/* remove the trailing slash we just added */
-			keypath[strlen(keypath) - 1] = '\0';
 		if (rc != 0) {
 			LogCrit(KVSNS_COMPONENT_EXTSTORE,
 				"couldn't set posix attrs key=%s rc=%d ino=%lu",

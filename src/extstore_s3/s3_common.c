@@ -111,3 +111,9 @@ void log_response_status_error(S3Status status, const S3ErrorDetails *error)
 					error->extraDetails[i].value);
 	}
 }
+
+/* takes care the fact that dir can be root (empty string in that case) */
+void formats3key(char *dst, size_t size, const char *dir, const char* key, bool keyisdir)
+{
+	snprintf(dst, size, "%s%s%s%s", dir, (strlen(dir)?"/":""), key, (keyisdir && strlen(key)? "/": ""));
+}

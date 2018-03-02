@@ -152,6 +152,13 @@ int list_object(const S3BucketContext *ctx,
 		extstore_s3_req_cfg_t *req_cfg,
 		kvsns_dentry_t *dirent, int *ndirent);
 
+/*
+ * Creates a s3 key path from a key and its parent directory. The key may be a
+ * directory. Takes into account the fact that dir may be the root directory (in
+ * which dir is the empty string).
+ */
+void formats3key(char *dst, size_t size, const char *dir, const char* key, bool keyisdir);
+
 /* S3 internal functions */
 int should_retry(S3Status st, int retries, int interval);
 S3Status log_response_properties(const S3ResponseProperties *props, void *data);
