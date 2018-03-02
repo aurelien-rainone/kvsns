@@ -184,7 +184,7 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 		return -EINVAL;
 
 	RC_WRAP(kvsns_access, cred, dir, KVSNS_ACCESS_READ);
-	RC_WRAP(kvsns_get_s3_path, *dir, S3_MAX_KEY_SIZE, dirpath, &isdir);
+	RC_WRAP(inocache_get_path, *dir, S3_MAX_KEY_SIZE, dirpath, &isdir);
 	if (!isdir)
 		return -ENOTDIR;
 
@@ -209,7 +209,7 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 	for (i = 0; i < *size; ++i) {
 		snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s", dirpath, dirent[i].name);
 		isdir = S_ISDIR(dirent[i].stats.st_mode);
-		RC_WRAP(kvsns_get_s3_inode, keypath, true, &dirent[i].inode, &isdir);
+		RC_WRAP(inocache_get_ino, keypath, true, &dirent[i].inode, &isdir);
 	}
 	/* indicate list ends */
 	dirent[i].name[0] = '\0';

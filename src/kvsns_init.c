@@ -61,7 +61,7 @@ int kvsns_start(const char *configpath)
 		return -rc;
 	}
 
-	kvsns_init_s3_paths();
+	inocache_init();
 
 	rc = extstore_init(cfg_items);
 	if (rc != 0) {
@@ -78,7 +78,7 @@ int kvsns_stop(void)
 	RC_WRAP(kvsal_fini);
 	RC_WRAP(extstore_fini);
 	free_ini_config_errors(cfg_items);
-	kvsns_free_s3_paths();
+	inocache_deinit();
 	return 0;
 }
 
@@ -87,7 +87,7 @@ int kvsns_init_root(int openbar)
 	kvsns_ino_t ino;
 
 	/* create root dir entry */
-	RC_WRAP(kvsns_add_s3_path, KVSNS_S3_ROOT_PATH, 1, &ino);
+	RC_WRAP(inocache_add, KVSNS_S3_ROOT_PATH, 1, &ino);
 
 	/* create and set the root dir stat, the stats for the root dir are the
 	 *  only to not be stored on stable storage. The file corresponding to
