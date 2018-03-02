@@ -45,6 +45,20 @@
 #define S3_REQ_DEFAULT_SLEEP_INTERVAL 1		/*< 1s between 2 successive retries */
 #define S3_REQ_DEFAULT_TIMEOUT 10000		/*< 10s before considering failure */
 
+/* Default PUT properties */
+#define PUT_CONTENT_TYPE NULL
+#define PUT_MD5 NULL
+#define PUT_CACHE_CONTROL NULL
+#define PUT_CONTENT_DISP_FNAME NULL
+#define PUT_CONTENT_ENCODING NULL
+#define PUT_EXPIRES -1
+#define PUT_CANNED_ACL S3CannedAclPrivate
+#define PUT_META_PROPS_COUNT 0
+#define PUT_SERVERSIDE_ENCRYPT 0
+
+/* Multipart chunk size */
+#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
+
 /* s3/libs3 configuration */
 extern S3BucketContext bucket_ctx;
 extern char host[S3_MAX_HOSTNAME_SIZE];

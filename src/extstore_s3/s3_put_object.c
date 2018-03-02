@@ -29,19 +29,6 @@
 #include "s3_common.h"
 
 
-#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
-
-/* Default PUT properties */
-#define PUT_CONTENT_TYPE NULL
-#define PUT_MD5 NULL
-#define PUT_CACHE_CONTROL NULL
-#define PUT_CONTENT_DISP_FNAME NULL
-#define PUT_CONTENT_ENCODING NULL
-#define PUT_EXPIRES -1
-#define PUT_CANNED_ACL S3CannedAclPrivate
-#define PUT_META_PROPS_COUNT 0
-#define PUT_SERVERSIDE_ENCRYPT 0
-
 typedef struct upload_mgr_{
 	/* used for initial multipart */
 	char * upload_id;
