@@ -193,24 +193,24 @@ static void _resp_complete_cb(S3Status status,
 int get_stats_object(const S3BucketContext *ctx, const char *key,
 		     extstore_s3_req_cfg_t *req_cfg,
 		     time_t *mtime, uint64_t *size,
-		     struct stat *posix_stat,
-		     bool *has_posix_stat)
-
+		     struct stat *posix_stat, bool *has_posix_stat)
 {
 	int rc;
 	struct _resp_cb_data_t cb_data;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
+	if (!ctx || !key || !req_cfg || !mtime || !size
+	    || !posix_stat || !has_posix_stat)
+		return -EINVAL;
+
 	/* define callback data */
 	cb_data.status = S3StatusOK;
 	cb_data.has_posix_stat = false;
 	memset(&cb_data.bufstat, 0, sizeof(struct stat));
 
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "retrieving object stats key=%s", key);
-
-	if (!has_posix_stat)
-		return -EINVAL;
+	LogDebug(KVSNS_COMPONENT_EXTSTORE,
+		 "retrieving object stats key=%s", key);
 
 	/* define callbacks */
 	S3ResponseHandler resp_handler = {

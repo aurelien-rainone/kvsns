@@ -395,7 +395,8 @@ void kvsns_free_s3_paths()
  *			is returned.
  * @param ino[OUT]	inode to retrieve
  * @param isdir[INOUT]	IN used only when create is true. OUT indicates a directory
- * @return 0 for success or a negative errno value
+ * @return 0 for success or a negative errno value.
+ * @note values are not modified in case of error.
  */
 int kvsns_get_s3_inode(const char *str, const int create,
 		       kvsns_ino_t *ino, int *isdir)
