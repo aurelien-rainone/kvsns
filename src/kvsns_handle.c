@@ -276,6 +276,29 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 			"couldn't get attributes rc=%d ino=%lu", rc, *ino);
 	}
 	return rc;
+#if 0
+
+	snprintf(k, KLEN, "%llu.stat", *ino);
+	RC_WRAP(kvsal_get_stat, k, bufstat);
+
+	if (S_ISREG(bufstat->st_mode)) {
+		/* for file, information is to be retrieved form extstore */
+		rc = extstore_getattr(ino, &data_stat);
+		if (rc != 0) {
+			if (rc == -ENOENT)
+				return 0; /* no associated data */
+			else
+				return rc;
+		}
+
+		/* found associated data and store metadata */
+		bufstat->st_size = data_stat.st_size;
+		bufstat->st_mtime = data_stat.st_mtime;
+		bufstat->st_atime = data_stat.st_atime;
+	}
+
+	return 0;
+#endif
 }
 
 int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
