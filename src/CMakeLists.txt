@@ -15,7 +15,7 @@ SET(kvsns_LIB_SRCS
     extstore_s3/s3_get_object.c
     extstore_s3/s3_del_object.c
     extstore_s3/s3_list_object.c
-    extstore_s3/inode_cache.c
+    extstore_s3/fd_cache.c
     extstore_s3/mru.c
     extstore_s3/internal.c
 )

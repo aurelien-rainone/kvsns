@@ -32,7 +32,7 @@
 #include <hiredis/hiredis.h>
 #include <gmodule.h>
 #include "internal.h"
-#include "inode_cache.h"
+#include "fd_cache.h"
 #include "s3_common.h"
 #include "mru.h"
 
@@ -75,7 +75,7 @@ int extstore_create(kvsns_ino_t object)
 	}
 
 	/* keep track of the created file */
-	g_tree_insert(wino_cache, (gpointer) object, (gpointer)((gintptr) fd));
+	g_tree_insert(wfd_cache, (gpointer) object, (gpointer)((gintptr) fd));
 
 	return 0;
 }
@@ -228,9 +228,9 @@ int extstore_init(struct collection_item *cfg_items)
 	}
 
 	/* init data caches structures and create cache directory if needed */
-	wino_cache = g_tree_new(g_key_cmp_func);
-	rino_cache = g_tree_new(g_key_cmp_func);
-	memset(&rino_mru, 0, sizeof(struct mru));
+	wfd_cache = g_tree_new(g_key_cmp_func);
+	rfd_cache = g_tree_new(g_key_cmp_func);
+	memset(&rfd_mru, 0, sizeof(struct mru));
 
 	struct stat st = {0};
 	if (stat(ino_cache_dir, &st) == -1) {
@@ -264,11 +264,11 @@ int extstore_fini()
 	S3_deinitialize();
 
 	/* destroy cache data structures */
-	g_tree_destroy(wino_cache);
-	wino_cache = NULL;
-	g_tree_destroy(rino_cache);
-	rino_cache = NULL;
-	mru_clear(&rino_mru);
+	g_tree_destroy(wfd_cache);
+	wfd_cache = NULL;
+	g_tree_destroy(rfd_cache);
+	rfd_cache = NULL;
+	mru_clear(&rfd_mru);
 
 	/* remove cached inodes */
 	remove_files_in(ino_cache_dir);
@@ -318,12 +318,12 @@ int extstore_read(kvsns_ino_t *ino,
 	         *ino, offset, buffer_size);
 
 	/* Try to obtain a file descriptor to read from */
-	gpointer key = g_tree_lookup(rino_cache, (gpointer) *ino);
+	gpointer key = g_tree_lookup(rfd_cache, (gpointer) *ino);
 	if (key == NULL) {
 
 		/* So we don't its file descriptor, but the inode may be cached
 		 * locally. Check in the MRU. */
-		if (!mru_mark_item(&rino_mru, mru_key_cmp_func, (void*) *ino)) {
+		if (!mru_mark_item(&rfd_mru, mru_key_cmp_func, (void*) *ino)) {
 
 			/* File is not cached locally, we must download it.*/
 			RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
@@ -339,12 +339,12 @@ int extstore_read(kvsns_ino_t *ino,
 
 			/* Before appending the inode to the MRU, ensure there's
 			 * at least one free entry (i.e maxlen - 1) */
-			mru_remove_unused(&rino_mru, rino_mru_maxlen - 1,
-					  rino_mru_remove, NULL);
+			mru_remove_unused(&rfd_mru, rfd_mru_maxlen - 1,
+					  rfd_mru_remove, NULL);
 
 			/* Add the inode to the MRU and immediately mark it */
-			mru_append(&rino_mru, (void*) *ino);
-			mru_mark_item(&rino_mru, mru_key_cmp_func, (void*) *ino);
+			mru_append(&rfd_mru, (void*) *ino);
+			mru_mark_item(&rfd_mru, mru_key_cmp_func, (void*) *ino);
 		}
 
 		fd = open(cache_path, O_RDONLY);
@@ -358,7 +358,7 @@ int extstore_read(kvsns_ino_t *ino,
 		}
 
 		/* keep track of the file descriptor */
-		g_tree_insert(rino_cache, (gpointer) *ino, (gpointer)((gintptr) fd));
+		g_tree_insert(rfd_cache, (gpointer) *ino, (gpointer)((gintptr) fd));
 
 	} else {
 		/* The file descriptor can't be 0 as it's reserved for stdin. */
@@ -398,7 +398,7 @@ int extstore_write(kvsns_ino_t *ino,
 
 
 	/* retrieve file descriptor */
-	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
+	gpointer key = g_tree_lookup(wfd_cache, (gpointer) *ino);
 	if (key == NULL) {
 		return -ENOENT;
 	}
@@ -443,7 +443,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	 * content (and attrs) are changing, we can spare a remote call in that
 	 * case. Plus in case we are uploading a file that didn't exist, s3 will
 	 * report it as 'not found' (-ENOENT) until the multipart completes */
-	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
+	gpointer key = g_tree_lookup(wfd_cache, (gpointer) *ino);
 	if (key != NULL) {
 		/* In that case temporarily report the attrs of the cached file.
 		 * As soon as the upload will be completed, s3 will report it
@@ -497,7 +497,7 @@ int extstore_setattr(kvsns_ino_t *ino,
 	RC_WRAP(kvsns_get_s3_path, *ino, S3_MAX_KEY_SIZE, keypath, &isdir);
 
 	/* do not set attributes of a currently 'write-opened' inode */
-	gpointer key = g_tree_lookup(wino_cache, (gpointer) *ino);
+	gpointer key = g_tree_lookup(wfd_cache, (gpointer) *ino);
 	if (key != NULL) {
 		return 0;
 	}
@@ -592,7 +592,7 @@ int extstore_open(kvsns_ino_t ino, int flags)
 	char strflags[1024] = "";
 
 	/* check if an entry has been added in the write cache */
-	gpointer key = g_tree_lookup(wino_cache, (gpointer) ino);
+	gpointer key = g_tree_lookup(wfd_cache, (gpointer) ino);
 	if (key == NULL) {
 		/* didn't pass by create before open, we probably want to read
 		 * that file */
@@ -621,9 +621,9 @@ int extstore_close(kvsns_ino_t ino)
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, keypath);
 
 	/* an inode should not be located in both read and write caches */
-	rc = wino_close(ino);
+	rc = wfd_close(ino);
 	if (rc)
 		return rc;
-	return rino_close(ino);
+	return rfd_close(ino);
 }
 

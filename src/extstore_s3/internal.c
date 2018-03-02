@@ -36,7 +36,7 @@
 #include "../kvsns_utils.h"
 #include "../kvsns_internal.h"
 #include "internal.h"
-#include "inode_cache.h"
+#include "fd_cache.h"
 #include "s3_common.h"
 #include "mru.h"
 

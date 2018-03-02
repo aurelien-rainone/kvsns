@@ -30,15 +30,15 @@
 #include "../kvsns_internal.h"
 #include "internal.h"
 #include "s3_common.h"
-#include "inode_cache.h"
+#include "fd_cache.h"
 
 
 /* global variables initialization */
 char ino_cache_dir[MAXPATHLEN] = "";
-GTree *wino_cache = NULL;
-GTree *rino_cache = NULL;
-struct mru rino_mru = {};
-const size_t rino_mru_maxlen = 10;
+GTree *wfd_cache = NULL;
+GTree *rfd_cache = NULL;
+struct mru rfd_mru = {};
+const size_t rfd_mru_maxlen = 10;
 
 int build_cache_path(kvsns_ino_t object,
 		     char *data_cache_path,
@@ -52,7 +52,7 @@ int build_cache_path(kvsns_ino_t object,
 			(unsigned long long)object);
 }
 
-int wino_close(kvsns_ino_t ino)
+int wfd_close(kvsns_ino_t ino)
 {
 	int rc, fd;
 	int isdir;
@@ -60,7 +60,7 @@ int wino_close(kvsns_ino_t ino)
 	char s3_path[S3_MAX_KEY_SIZE];
 	char write_cache_path[MAXPATHLEN];
 
-	wkey = g_tree_lookup(wino_cache, (gpointer) ino);
+	wkey = g_tree_lookup(wfd_cache, (gpointer) ino);
 	if (!wkey)
 		return 0;
 
@@ -95,7 +95,7 @@ int wino_close(kvsns_ino_t ino)
 
 remove_fd:
 
-	g_tree_remove(wino_cache, (gpointer) ino);
+	g_tree_remove(wfd_cache, (gpointer) ino);
 	if (remove(write_cache_path)) {
 		LogWarn(KVSNS_COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
 				write_cache_path);
@@ -103,12 +103,12 @@ remove_fd:
 	return rc;
 }
 
-int rino_close(kvsns_ino_t ino)
+int rfd_close(kvsns_ino_t ino)
 {
 	int rc, fd;
 	gpointer rkey;
 
-	rkey = g_tree_lookup(rino_cache, (gpointer) ino);
+	rkey = g_tree_lookup(rfd_cache, (gpointer) ino);
 	if (!rkey)
 		return 0;
 
@@ -121,17 +121,17 @@ int rino_close(kvsns_ino_t ino)
 			 fd, rc);
 	}
 
-	g_tree_remove(rino_cache, (gpointer) ino);
+	g_tree_remove(rfd_cache, (gpointer) ino);
 	return rc;
 }
 
-void rino_mru_remove (void *item, void *data)
+void rfd_mru_remove (void *item, void *data)
 {
 	kvsns_ino_t ino = (kvsns_ino_t) item;
 	char cache_path[MAXPATHLEN];
 
 	/* cleanup the file descriptor and its references */
-	rino_close(ino);
+	rfd_close(ino);
 
 	/* delete the cached file from local filesystem */
 	build_cache_path(ino, cache_path, read_cache_t, MAXPATHLEN);

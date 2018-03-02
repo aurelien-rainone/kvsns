@@ -34,57 +34,56 @@
 /* forward declarations */
 typedef GTree GTree;
 
-/* Inode cache management is split in 2 non intersecting caches, one for the
- * downloaded inodes and the other for the inodes to upload. */
+/* File descriptors cache management is split in 2 non intersecting caches, one
+ * for downloaded files and another file for uploaded files */
 
 typedef enum cache_ { read_cache_t, write_cache_t } cache_t;
 
-/* Inode cache directory (read and write). Cached files are named after the
+/* FD cache directory (read and write). Cached files are named after the
  * inode number they represent, preceded by the letter 'w' or 'r', depending on
  * the type of inode cache they are in */
 extern char ino_cache_dir[MAXPATHLEN];
 
-/* `wino_cache`, for 'written inode cache', is only used to upload
- * new files to s3. After the creation of a new inode and until the reception of
- * close, all successive write operations on this inode are performed on the
- * local filesystem and thus do not involve networking. It's only when NFS
- * requests the file closure that we start transfering the file to stable
- * storage. When the transfer is complete the locally cached inode becomes
- * useless and can safely be deleted.
+/* `wfd_cache`, for 'written fd cache', is only used to upload new files to s3.
+ * After the creation of a new file and until the reception of close, all
+ * successive write operations on this fd are performed on the local filesystem
+ * and thus do not involve networking. It's only when NFS requests the file
+ * closure that we start transfering the file to stable storage. When the
+ * transfer is complete the locally cached inode becomes useless and can safely
+ * be deleted.
  *
- * wino_cache is a tree in which keys are inodes and values are file descriptors
- * of the cached files, on which `pwrite` can be called */
-extern GTree *wino_cache;
+ * wfd_cache is a tree in which keys are inode numbers and values are file
+ * descriptors of the cached files, on which `pwrite` can be called */
+extern GTree *wfd_cache;
 
-/* The read inode cache involves 2 data structures.
- *  - `rino_mru` keeps track of the most recently used inodes. An inode is
- *  present in `rino_mru` when the cache contains a local copy of an s3
- *  object. Disk space being somewhat limited, when an inode has not been used
- *  recently, its local copy gets deleted and frees up disk space.
- *  - `rino_cache` is a tree which keys are inodes and values are file
+/* The read FD cache involves 2 data structures.
+ *  - `rfd_mru` keeps track of the most recently used fds. A fd is present in
+ *  `rfd_mru` when the cache contains a local copy of an s3 object. Disk space
+ *  being somewhat limited, when a fd has not been used recently, its local
+ *  copy gets deleted and frees up disk space.
+ *  - `rfd_cache` is a tree which keys are inode numbers and values are file
  *  descriptors of the cached files, on which pread can be called
- *  - `rino_mru_maxlen` is the maximum number of inodes to keep in the read
+ *  - `rfd_mru_maxlen` is the maximum number of inodes to keep in the read
  *  cache. There will never be more than this number as the list is shrunk
  *  before appending.
  */
-extern GTree *rino_cache;
-extern struct mru rino_mru;
-extern const size_t rino_mru_maxlen;
+extern GTree *rfd_cache;
+extern struct mru rfd_mru;
+extern const size_t rfd_mru_maxlen;
 
-/* Let the 'read inode cache' handle closure of an inode.
+/* Let the 'read fd cache' handle closure of a fd.
  * Nothing else to than closing the cached inode and removing the entry to its
  * file descriptor from the tree.
  */
-int rino_close(kvsns_ino_t ino);
+int rfd_close(kvsns_ino_t ino);
 
-/* Let the 'write inode cache' handle closure of an inode.
+/* Let the 'write fd cache' handle closure of a fd.
  * Once the cached inode has been closed, we upload the file to stable storage.
  */
-int wino_close(kvsns_ino_t ino);
+int wfd_close(kvsns_ino_t ino);
 
-/* callback triggered when an cached inode is evicted from the read inode
- * cache */
-void rino_mru_remove (void *item, void *data);
+/* callback triggered when an cached fd is evicted from the read fd cache */
+void rfd_mru_remove (void *item, void *data);
 
 /**
  * Build path of data cache file for a given inode.
