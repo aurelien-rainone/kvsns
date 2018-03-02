@@ -38,8 +38,10 @@
 #define S3_POSIX_CTIM S3_METADATA_HEADER_NAME_PREFIX "posix-ctim"
 #define S3_POSIX_VER S3_METADATA_HEADER_NAME_PREFIX "posix-ver"
 
-#define S3_POSIX_MINNAME_LEN 32		/*< min length for a posix name s3 metadata */
-#define S3_POSIX_MINVALUE_LEN 32	/*< min length for a posix value s3 metadata */
+#define S3_POSIX_MD_COUNT 7
+
+#define S3_POSIX_MAXNAME_LEN 32		/*< min length for a posix name s3 metadata */
+#define S3_POSIX_MAXVALUE_LEN 32	/*< min length for a posix value s3 metadata */
 
 /* In case the posix attributes stored on s3 are changed */
 #define S3_POSIX_STAT_VERSION 1
@@ -58,33 +60,33 @@ struct _resp_cb_data_t {
  * @brief posix2s3mds convert posix attributes to s3 metadata
  * @param dstmds [INOUT] array of preallocated s3 object metadata "key-value
  *        pairs", containing at least S3_POSIX_MD_COUNT elements. Name and
- * value minimum sizes are defined in S3_POSIX_MINNAME_LEN and
- * S3_POSIX_MINVALUE_LEN.
+ * value maximum sizes are defined in S3_POSIX_MAXNAME_LEN and
+ * S3_POSIX_MAXVALUE_LEN.
  * @param srcstat posix stat structure to convert from
  */
 void posix2s3mds(const S3NameValue *dstmds, const struct stat *srcstat)
 {
 	int i = 0;
-	strncpy((char*) dstmds[i].name, S3_POSIX_MODE, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%u", srcstat->st_mode);
+	strncpy((char*) dstmds[i].name, S3_POSIX_MODE, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_mode);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_UID, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%u", srcstat->st_uid);
+	strncpy((char*) dstmds[i].name, S3_POSIX_UID, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_uid);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_GID, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%u", srcstat->st_gid);
+	strncpy((char*) dstmds[i].name, S3_POSIX_GID, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_gid);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_ATIM, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%ld", srcstat->st_atim.tv_sec);
+	strncpy((char*) dstmds[i].name, S3_POSIX_ATIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_atim.tv_sec);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_MTIM, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%ld", srcstat->st_mtim.tv_sec);
+	strncpy((char*) dstmds[i].name, S3_POSIX_MTIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_mtim.tv_sec);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_CTIM, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%ld", srcstat->st_ctim.tv_sec);
+	strncpy((char*) dstmds[i].name, S3_POSIX_CTIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_ctim.tv_sec);
 	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_VER, S3_POSIX_MINNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MINVALUE_LEN, "%d", S3_POSIX_STAT_VERSION);
+	strncpy((char*) dstmds[i].name, S3_POSIX_VER, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%d", S3_POSIX_STAT_VERSION);
 }
 
 /**
@@ -101,7 +103,7 @@ bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int 
 	int i, nvals = 0;
 	for (i = 0; i < nmds; i ++) {
 		const char *name = srcmds[i].name;
-		const char *value = srcmds[i].name;
+		const char *value = srcmds[i].value;
 
 		/* st_ino and st_nlink are not stored on s3, as they depend on
 		 * the client context */
@@ -140,9 +142,8 @@ bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int 
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_CTIM)) {
-			dststat->st_ctim.tv_sec = atoi(value);
-			dststat->st_ctim.tv_nsec = 0;
+		if (!strcmp(name, S3_POSIX_VER)) {
+			*ver= atoi(value);
 			nvals++;
 			continue;
 		}
@@ -195,7 +196,7 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 		     time_t *mtime, uint64_t *size,
 		     struct stat *posix_stat, bool *has_posix_stat)
 {
-	int rc;
+	int rc = 0;
 	struct _resp_cb_data_t cb_data;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
@@ -205,12 +206,10 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 		return -EINVAL;
 
 	/* define callback data */
+	memset(&cb_data, 0, sizeof(struct _resp_cb_data_t));
 	cb_data.status = S3StatusOK;
 	cb_data.has_posix_stat = false;
 	memset(&cb_data.bufstat, 0, sizeof(struct stat));
-
-	LogDebug(KVSNS_COMPONENT_EXTSTORE,
-		 "retrieving object stats key=%s", key);
 
 	/* define callbacks */
 	S3ResponseHandler resp_handler = {
@@ -241,7 +240,6 @@ int get_stats_object(const S3BucketContext *ctx, const char *key,
 
 	*mtime = cb_data.mtime;
 	*size = cb_data.size;
-	rc = 0;
 	return rc;
 }
 
@@ -249,6 +247,67 @@ int set_stats_object(const S3BucketContext *ctx, const char *key,
 		     extstore_s3_req_cfg_t *req_cfg,
 		     const struct stat *posix_stat)
 {
+	int rc = 0;
+	int i;
+	int64_t lastModified;
+	char eTag[256];
+	struct _resp_cb_data_t cb_data;
+	int retries = req_cfg->retries;
+	int interval = req_cfg->sleep_interval;
 
-	return 0;
+	if (!ctx || !key || !req_cfg || !posix_stat)
+		return -EINVAL;
+
+	/* define callback data */
+	memset(&cb_data, 0, sizeof(struct _resp_cb_data_t));
+
+	/* define request properties data */
+	S3NameValue mds[S3_POSIX_MD_COUNT];
+	for (i = 0; i < S3_POSIX_MD_COUNT; ++i) {
+		mds[i].name = malloc(sizeof(char) * S3_POSIX_MAXNAME_LEN);
+		mds[i].value = malloc(sizeof(char) * S3_POSIX_MAXVALUE_LEN);
+	}
+	posix2s3mds(&mds[0], posix_stat);
+
+	S3PutProperties put_props = {
+		PUT_CONTENT_TYPE,
+		PUT_MD5,
+		PUT_CACHE_CONTROL,
+		PUT_CONTENT_DISP_FNAME,
+		PUT_CONTENT_ENCODING,
+		PUT_EXPIRES,
+		PUT_CANNED_ACL,
+		S3_POSIX_MD_COUNT,
+		mds,
+		PUT_SERVERSIDE_ENCRYPT,
+	};
+
+	S3ResponseHandler resp_handler = {
+		&_resp_props_cb,
+		&_resp_complete_cb,
+	};
+
+	do {
+		S3_copy_object(ctx, key, ctx->bucketName,
+			       key, &put_props,
+			       &lastModified, sizeof(eTag), eTag, NULL,
+			       req_cfg->timeout,
+			       &resp_handler, &cb_data);
+		/* Decrement retries and wait 1 second longer */
+		--retries;
+		++interval;
+	} while (should_retry(cb_data.status, retries, interval));
+
+	if (cb_data.status != S3StatusOK) {
+		rc = s3status2posix_error(cb_data.status);
+		LogWarn(KVSNS_COMPONENT_EXTSTORE, "libs3 error errstr=%s s3sta=%d rc=%d key=%s",
+			S3_get_status_name(cb_data.status), cb_data.status, rc, key);
+	}
+
+	/* free md strings */
+	for (i = 0; i < S3_POSIX_MD_COUNT; ++i) {
+		free((char *) mds[i].name);
+		free((char *) mds[i].value);
+	}
+	return rc;
 }

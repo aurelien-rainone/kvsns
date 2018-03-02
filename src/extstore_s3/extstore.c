@@ -37,9 +37,6 @@
 #include "mru.h"
 
 
-void extstore_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
-			 int isdir, size_t size);
-
 int extstore_create(kvsns_ino_t object)
 {
 	int rc;
@@ -453,7 +450,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 		 * accurately.  */
 		struct stat fdsta;
 		fstat((int) ((intptr_t) key), &fdsta);
-		extstore_fill_stats(&fdsta, *ino, 0, 0, 0);
+		kvsns_fill_stats(&fdsta, *ino, 0, 0, 0);
 		stat->st_size = fdsta.st_size;
 		stat->st_mtime = fdsta.st_mtime;
 		stat->st_atime = fdsta.st_atime;
@@ -470,7 +467,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 	if (!posixified) {
 		/* "posixify" this s3 object */
 		struct stat bufstat;
-		extstore_fill_stats(&bufstat, *ino, mtime, isdir, size);
+		kvsns_fill_stats(&bufstat, *ino, mtime, isdir, size);
 		rc = set_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 				      &bufstat);
 		if (rc != 0) {
@@ -481,6 +478,8 @@ int extstore_getattr(kvsns_ino_t *ino,
 		}
 
 		memcpy(stat, &bufstat, sizeof(struct stat));
+	} else {
+		kvsns_merge_s3_stats(stat, *ino, size);
 	}
 
 	return 0;
@@ -511,48 +510,6 @@ int extstore_setattr(kvsns_ino_t *ino,
 	return 0;
 }
 
-void extstore_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
-			 int isdir, size_t size)
-{
-	const bool openbar = true;
-	const int def_dirmode = 0755;
-	const int def_filemode = 0644;
-	const int def_dirmode_open = 0777;
-	const int def_filemode_open = 0666;
-	int dirmode, filemode;
-	if (openbar) {
-		dirmode = def_dirmode_open;	
-		filemode = def_filemode_open;
-	} else {
-		dirmode = def_dirmode;
-		filemode = def_filemode;
-	}
-
-	memset(stat, 0, sizeof(struct stat));
-	stat->st_uid = 0;
-	stat->st_gid = 0;
-	stat->st_ino = ino;
-
-	stat->st_atim.tv_sec = mtime;
-	stat->st_atim.tv_nsec = 0; /* time_t only hold seconds */
-
-	stat->st_mtim.tv_sec = stat->st_atim.tv_sec;
-	stat->st_mtim.tv_nsec = stat->st_atim.tv_nsec;
-
-	stat->st_ctim.tv_sec = stat->st_atim.tv_sec;
-	stat->st_ctim.tv_nsec = stat->st_atim.tv_nsec;
-
-	if (isdir) {
-		stat->st_mode = S_IFDIR|dirmode;
-		stat->st_nlink = 2;
-		stat->st_size = 0;
-	} else {
-		stat->st_mode = S_IFREG|filemode;
-		stat->st_nlink = 1;
-		stat->st_size = size;
-	}
-}
-
 int extstore_lookup(kvsns_ino_t *parent, char *name,
 		    struct stat *stat, kvsns_ino_t *ino)
 {
@@ -564,7 +521,6 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 	char dirpath[S3_MAX_KEY_SIZE] = "";
 	char keypath[S3_MAX_KEY_SIZE] = "";
 	char s3keypath[S3_MAX_KEY_SIZE] = "";
-	/*char sep[2] = {'\0', '\0'};*/
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "parent=%llu name=%s", *parent, name);
 
@@ -576,15 +532,6 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 
 	isdir = 0;
 	formats3key(&keypath[0], S3_MAX_KEY_SIZE, dirpath, name, isdir);
-
-	/* forge the s3 key path (with special treament for root dir, that
-	 * should not be represented by a slash */
-	/*if (isdir && (*parent != KVSNS_ROOT_INODE))*/
-		/*sep[0] = '/';*/
-	/*snprintf(keypath, S3_MAX_KEY_SIZE, "%s%s%s", dirpath, sep, name);*/
-
-	/*path2s3path(s3key, S3_MAX_KEY_SIZE, dirpath, isdir, *parent != KVSNS_ROOT_INODE);*/
-
 	if (!kvsns_get_s3_inode(keypath, false, ino, &isdir))
 		/* this file already has an inode */
 		return extstore_getattr(ino, stat);
@@ -594,7 +541,6 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 	 * same s3 key with a trailing slash */
 
 	/* file lookup */
-	/*isdir = 0;*/
 	formats3key(&s3keypath[0], S3_MAX_KEY_SIZE, dirpath, name, isdir);
 	rc = get_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 			      &mtime, &size, stat, &posixified);
@@ -623,8 +569,7 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 	/* "posixify" this s3 object */
 	if (!posixified) {
 		struct stat bufstat;
-		extstore_fill_stats(&bufstat, *ino, mtime, isdir, size);
-
+		kvsns_fill_stats(&bufstat, *ino, mtime, isdir, size);
 		rc = set_stats_object(&bucket_ctx, s3keypath, &def_s3_req_cfg,
 				      &bufstat);
 		if (rc != 0) {
@@ -635,6 +580,8 @@ int extstore_lookup(kvsns_ino_t *parent, char *name,
 		}
 
 		memcpy(stat, &bufstat, sizeof(struct stat));
+	} else {
+		kvsns_merge_s3_stats(stat, *ino, size);
 	}
 
 	return rc;
@@ -677,10 +624,6 @@ int extstore_close(kvsns_ino_t ino)
 	rc = wino_close(ino);
 	if (rc)
 		return rc;
-	rc = rino_close(ino);
-	if (rc)
-		return rc;
-
-	return 0;
+	return rino_close(ino);
 }
 

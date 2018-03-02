@@ -51,6 +51,15 @@ int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 int kvsns_get_stat(kvsns_ino_t *ino, struct stat *bufstat);
 int kvsns_set_stat(kvsns_ino_t *ino, struct stat *bufstat);
 int kvsns_update_stat(kvsns_ino_t *ino, int flags);
+
+/* merge a stat structure (prefilled with attributes stored on s3)
+ * with the provided attributes (some attributes shouldn't be stored on s3)*/
+void kvsns_merge_s3_stats(struct stat *stat, kvsns_ino_t ino, size_t size);
+
+/* fill an empty stat structure, using the provided values */
+void kvsns_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
+		      int isdir, size_t size);
+
 int kvsns_amend_stat(struct stat *stat, int flags);
 int kvsns_delall_xattr(kvsns_cred_t *cred, kvsns_ino_t *ino);
 

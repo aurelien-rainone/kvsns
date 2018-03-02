@@ -91,6 +91,11 @@
 #define KVSNS_ACCESS_WRITE	2
 #define KVSNS_ACCESS_EXEC	4
 
+#define DEFAULT_DIRMODE 0755
+#define DEFAULT_FILEMODE 0755
+
+#define OPENBAR_DIRMODE 0777
+#define OPENBAR_FILEMODE 0666
 
 /* Logging related definitions and functions */
 

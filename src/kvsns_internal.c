@@ -153,6 +153,53 @@ int kvsns_amend_stat(struct stat *stat, int flags)
 	return 0;
 }
 
+void kvsns_merge_s3_stats(struct stat *stat, kvsns_ino_t ino, size_t size)
+{
+	stat->st_ino = ino;
+	if (S_ISDIR(stat->st_mode)) {
+		stat->st_nlink = 2;
+		stat->st_size = 0;
+	} else if (S_ISREG(stat->st_mode)) {
+		stat->st_nlink = 1;
+		stat->st_size = size;
+	}
+}
+
+void kvsns_fill_stats(struct stat *stat, kvsns_ino_t ino, time_t mtime,
+		      int isdir, size_t size)
+{
+	int mode;
+	const bool openbar = true;
+
+	memset(stat, 0, sizeof(struct stat));
+
+	stat->st_uid = 0;
+	stat->st_gid = 0;
+	stat->st_ino = ino;
+
+	stat->st_atim.tv_sec = mtime;
+	stat->st_atim.tv_nsec = 0; /* time_t only hold seconds */
+
+	stat->st_mtim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_mtim.tv_nsec = stat->st_atim.tv_nsec;
+
+	stat->st_ctim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_ctim.tv_nsec = stat->st_atim.tv_nsec;
+
+	if (isdir) {
+		mode = openbar? OPENBAR_DIRMODE: DEFAULT_DIRMODE;
+		stat->st_mode = S_IFDIR|mode;
+		stat->st_nlink = 2;
+		stat->st_size = 0;
+	} else {
+		mode = openbar? OPENBAR_FILEMODE: DEFAULT_FILEMODE;
+		stat->st_mode = S_IFREG|mode;
+		stat->st_nlink = 1;
+		stat->st_size = size;
+	}
+}
+
+
 int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 		       char *name, char *lnk, mode_t mode,
 		       kvsns_ino_t *new_entry, enum kvsns_type type)
