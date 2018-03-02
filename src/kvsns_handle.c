@@ -188,6 +188,13 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 	if (!isdir)
 		return -ENOTDIR;
 
+	if (isdir && *dir != KVSNS_ROOT_INODE)
+		strncat(dirpath, "/", S3_MAX_KEY_SIZE);
+
+	/* TODO: double check the bounds of dirent array, this is probably going
+	 * to crash badly as soon as the number of elements in s3 response is
+	 * greater than *size */
+
 	/* s3 list bucket request, uses standard s3 api url params in order to
 	 * retrieve the required content. (directory-like) */
 	rc = list_object(&bucket_ctx, dirpath, &def_s3_req_cfg, dirent, size);
@@ -204,6 +211,8 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 		isdir = S_ISDIR(dirent[i].stats.st_mode);
 		RC_WRAP(kvsns_get_s3_inode, keypath, true, &dirent[i].inode, &isdir);
 	}
+	/* indicate list ends */
+	dirent[i].name[0] = '\0';
 
 	/* TODO: ensure there are empty files for each directories listed in
 	 * 'commonPrefix' field of s3 response, as they are not create
