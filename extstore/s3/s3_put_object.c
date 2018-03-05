@@ -69,7 +69,6 @@ typedef struct list_parts_callback_data_
 	int num_parts;
 	int handle_parts_start;
 	int all_details;
-	int no_print;
 	upload_mgr_t *manager;
 } list_parts_callback_data_t;
 
@@ -148,20 +147,9 @@ S3Status list_parts_cb(int is_truncated,
 	int i;
 	for (i = 0; i < num_parts; i++) {
 		const S3ListPart *part = &(parts[i]);
-		char timebuf[256];
-		if (cb_data->no_print) {
-			manager->etags[handle_parts_start+i] = strdup(part->eTag);
-			manager->next_etags_pos++;
-			manager->remaining = manager->remaining - part->size;
-		} else {
-			time_t t = (time_t) part->lastModified;
-			strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%SZ",
-				 gmtime(&t));
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-30s", timebuf);
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-15llu", (unsigned long long) part->partNumber);
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-45s", part->eTag);
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, "%-15llu\n", (unsigned long long) part->size);
-		}
+		manager->etags[handle_parts_start+i] = strdup(part->eTag);
+		manager->next_etags_pos++;
+		manager->remaining = manager->remaining - part->size;
 	}
 
 	cb_data->num_parts += num_parts;
@@ -219,7 +207,6 @@ S3Status initial_multipart_callback(const char * upload_id, void * cb_data_)
 S3Status multiparts_resp_props_cb(const S3ResponseProperties *props,
 				  void *cb_data_)
 {
-	log_response_properties(props, cb_data_);
 	multipart_part_data_t *cb_data;
 	cb_data = (multipart_part_data_t *) cb_data_;
 	int seq = cb_data->seq;
@@ -273,11 +260,11 @@ int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 	if (cb_data->remaining) {
 		int to_read = ((cb_data->remaining > bufsize) ?
 				bufsize : cb_data->remaining);
-		int stridx = cb_data->commitstr->len - to_read;
-		memcpy(buffer, cb_data->commitstr->str + stridx, to_read);
+		off_t curidx = cb_data->commitstr->len - cb_data->remaining;
+		memcpy(buffer, cb_data->commitstr->str + curidx, to_read);
+		cb_data->remaining -= to_read;
 		ret = to_read;
 	}
-	cb_data->remaining -= ret;
 	return ret;
 }
 
@@ -303,7 +290,6 @@ int try_get_parts_info(const S3BucketContext *ctx,
 	cb_data.num_parts = 0;
 	cb_data.all_details = 0;
 	cb_data.manager = manager;
-	cb_data.no_print = 1;
 	cb_data.status = S3StatusOK;
 	do {
 		cb_data.is_truncated = 0;
