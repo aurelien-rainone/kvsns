@@ -258,7 +258,6 @@ int kvsns_start(const char *config);
  */
 int kvsns_stop(void);
 
-
 /**
  * Create the root of the namespace.
  *

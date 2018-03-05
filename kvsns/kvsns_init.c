@@ -118,5 +118,23 @@ int kvsns_init_root(int openbar)
 	snprintf(k, KLEN, "%llu.stat", ino);
 	RC_WRAP(kvsal_set_stat, k, &bufstat);
 
+	strncpy(k, "KVSNS_INODE", KLEN);
+	snprintf(v, VLEN, "%llu", KVSNS_ROOT_INODE);
+	/*current_inode = KVSNS_ROOT_INODE;*/
+	RC_WRAP(kvsal_set_char, k, v);
+
+	strncpy(k, "KVSNS_PARENT_INODE", KLEN);
+	snprintf(v, VLEN, "%llu", KVSNS_ROOT_INODE);
+	/*parent_inode = KVSNS_ROOT_INODE;*/
+	RC_WRAP(kvsal_set_char, k, v);
+
+	strncpy(k, "KVSNS_PATH", KLEN);
+	strncpy(v, "/", VLEN);
+	RC_WRAP(kvsal_set_char, k, v);
+
+	strncpy(k, "KVSNS_PREV_PATH", KLEN);
+	strncpy(v, "/", VLEN);
+	RC_WRAP(kvsal_set_char, k, v);
+
 	return 0;
 }
