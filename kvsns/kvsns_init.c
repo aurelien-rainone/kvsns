@@ -137,5 +137,9 @@ int kvsns_init_root(int openbar)
 	strncpy(v, "/", VLEN);
 	RC_WRAP(kvsal_set_char, k, v);
 
+	/* indicates the directory has never been listed */
+	snprintf(k, KLEN, "%llu.listed", ino);
+	RC_WRAP(kvsal_set_char, k, "0");
+
 	return 0;
 }

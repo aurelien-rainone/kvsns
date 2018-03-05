@@ -192,6 +192,7 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
 		  kvsns_dentry_t *dirent, int *size)
 {
 	char pattern[KLEN];
+	char k[VLEN];
 	char v[VLEN];
 	kvsal_item_t *items;
 	int i;
@@ -203,6 +204,14 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
 		return -EINVAL;
 
 	RC_WRAP(kvsns_access, cred, &dir->ino, KVSNS_ACCESS_READ);
+
+	/* check if the directory has already been listed */
+	snprintf(k, KLEN, "%llu.listed", dir->ino);
+	kvsal_get_char(k, v);
+	sscanf(v, "%d", &i);
+	if (i == 0) {
+		extstore_readdir(dir->ino);
+	}
 
 	items = (kvsal_item_t *)malloc(*size*sizeof(kvsal_item_t));
 	if (items == NULL)

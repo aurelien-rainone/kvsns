@@ -513,3 +513,13 @@ int extstore_close(kvsns_ino_t ino)
 	return 0;
 }
 
+int extstore_readdir(kvsns_ino_t ino)
+{
+	char s3_path[S3_MAX_KEY_SIZE];
+
+	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, s3_path);
+	return 0;
+}
+
