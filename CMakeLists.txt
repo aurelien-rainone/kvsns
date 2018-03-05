@@ -17,7 +17,8 @@ message( STATUS "cmake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
 message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
 
 # Option (for choosing KVSAL backend)
-option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" ON)
+option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" OFF)
+option(USE_KVS_S3 "Use S3 as KVS in KVSAL, with redis as cache" ON)
 
 option(USE_POSIX_STORE "Use POSIX directory as object store" OFF)
 option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
@@ -95,7 +96,6 @@ endif((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 ## Start building stuff ##
 if(USE_KVS_REDIS)
 
-
 find_library(HAVE_HIREDIS hiredis)
 check_library_exists(
     hiredis
@@ -109,6 +109,23 @@ if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
       message(FATAL_ERROR "Cannot find hiredis")
 endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
 endif(USE_KVS_REDIS)
+
+if(USE_KVS_S3)
+
+find_library(HAVE_HIREDIS hiredis)
+check_library_exists(
+    hiredis
+    redisCommand
+    ""
+    HAVE_HIREDIS
+    )
+check_include_files("hiredis/hiredis.h" HAVE_HIREDIS_H)
+
+if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
+      message(FATAL_ERROR "Cannot find hiredis")
+endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
+endif(USE_KVS_S3)
+
 
 ### Check for rados ###
 if(USE_RADOS)
