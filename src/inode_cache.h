@@ -43,7 +43,7 @@ void inocache_deinit();
  * @return 0 for success or a negative errno value
  */
 int inocache_get_ino(const char *str, const int create,
-		       kvsns_ino_t *ino, int *isdir);
+		     kvsns_ino_t *ino, int *isdir);
 
 /**
  * @brief inocache_get_path get the path associated with an inode
@@ -51,20 +51,23 @@ int inocache_get_ino(const char *str, const int create,
  * @param size[IN]	maximum writable size of the str buffer
  * @param str[OUT]	path
  * @param isdir[OUT]	indicates if the inode is a directory
+ * @param stat[OUT]	set to the stored stat or NULL if no stat stored (may be
+ * NULL in input as in output)
  * @return 0 for success or a negative errno value
  */
-int inocache_get_path(kvsns_ino_t ino, const int size, char *str, int *isdir);
+int inocache_get_path(kvsns_ino_t ino, const int size, char *str, int *isdir, struct stat **stat);
 
 /**
- * @brief inocache_add associates the path with an unique inode number
+ * @brief inocache_create associates the path with an unique inode number
  * @param str[IN]	path to cache
  * @param isdir[IN]	indicates if the inode is a directory
+ * @param stat[IN]	attrs to associate with the new inode (may be NULL)
  * @param ino[OUT]	associated inode number
  *
  * @note paths should neither have a leading nor trailing slashes
  * @return 0 for success or a negative errno value
  */
-int inocache_add(const char *str, const int isdir, kvsns_ino_t *ino);
+int inocache_create(const char *str, const int isdir, kvsns_ino_t *ino, struct stat *stat);
 
 extern struct stat root_stat;
 

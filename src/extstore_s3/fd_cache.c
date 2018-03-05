@@ -74,7 +74,7 @@ int wfd_close(kvsns_ino_t ino)
 		goto remove_fd;
 	}
 
-	RC_WRAP(inocache_get_path, ino, S3_MAX_KEY_SIZE, s3_path, &isdir);
+	RC_WRAP(inocache_get_path, ino, S3_MAX_KEY_SIZE, s3_path, &isdir, NULL);
 	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
 
 	/* override default s3 request config */

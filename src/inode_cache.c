@@ -30,6 +30,7 @@ typedef struct ino_ent_ {
 	kvsns_ino_t ino;
 	char *path;
 	int isdir;
+	struct stat *stat; /* only used for tmp inodes */
 } ino_ent_t;
 
 static GTree *ino_ents;		/*< ino_ent_t indexed by inode */
@@ -57,6 +58,9 @@ void _free_ino_ent(gpointer data)
 	free(p->path);
 	p->path = NULL;
 	p->ino = 0;
+	if (p->stat)
+		free(p->stat);
+	p->stat = NULL;
 	free(p);
 }
 
@@ -97,7 +101,7 @@ int inocache_get_ino(const char *str, const int create,
 		if (!create)
 			return -ENOENT;
 		/* add this path with the provided `isdir` value */
-		return inocache_add(str, *isdir, ino);
+		return inocache_create(str, *isdir, ino, NULL);
 	}
 
 	*ino = ino_ent->ino;
@@ -105,7 +109,7 @@ int inocache_get_ino(const char *str, const int create,
 	return 0;
 }
 
-int inocache_get_path(kvsns_ino_t ino, const int size, char *str, int *isdir)
+int inocache_get_path(kvsns_ino_t ino, const int size, char *str, int *isdir, struct stat **stat)
 {
 	ino_ent_t *ino_ent;
 
@@ -118,14 +122,16 @@ int inocache_get_path(kvsns_ino_t ino, const int size, char *str, int *isdir)
 
 	strncpy(str, ino_ent->path, size);
 	*isdir = ino_ent->isdir;
+	if (stat)
+		*stat = ino_ent->stat;
 	return 0;
 }
 
-int inocache_add(const char *str, const int isdir, kvsns_ino_t *ino)
+int inocache_create(const char *str, const int isdir, kvsns_ino_t *ino, struct stat *stat)
 {
 	ino_ent_t *ino_ent;
 	size_t len;
-	/* added paths should be */
+
 	if (!ino || !str)
 		return -EINVAL;
 
@@ -146,10 +152,17 @@ int inocache_add(const char *str, const int isdir, kvsns_ino_t *ino)
 	strcpy(ino_ent->path, str);
 	ino_ent->isdir = isdir;
 	ino_ent->ino = *ino;
+	ino_ent->stat = NULL;
+	if (stat) {
+		ino_ent->stat = malloc(sizeof(struct stat));
+		stat->st_ino = *ino;
+		memcpy(ino_ent->stat, stat, sizeof(struct stat));
+	}
 
-	/* ino_ents: fast path  lookup by inode */
+	/* ino_ents: fast path lookup by inode */
 	g_tree_insert(ino_ents, (gpointer) *ino, (gpointer) ino_ent);
 	/* ino_inodes: fast inode lookup by path */
 	g_tree_insert(ino_inodes, (gpointer) ino_ent->path, (gpointer) ino_ent);
 	return 0;
 }
+

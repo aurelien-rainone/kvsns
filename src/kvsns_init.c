@@ -84,10 +84,11 @@ int kvsns_stop(void)
 
 int kvsns_init_root(int openbar)
 {
+	struct timespec ts;
 	kvsns_ino_t ino;
 
 	/* create root dir entry */
-	RC_WRAP(inocache_add, KVSNS_S3_ROOT_PATH, 1, &ino);
+	RC_WRAP(inocache_create, KVSNS_S3_ROOT_PATH, 1, &ino, NULL);
 
 	/* create and set the root dir stat, the stats for the root dir are the
 	 *  only to not be stored on stable storage. The file corresponding to
@@ -103,9 +104,12 @@ int kvsns_init_root(int openbar)
 	root_stat.st_nlink = 2;
 	root_stat.st_uid = 0;
 	root_stat.st_gid = 0;
-	root_stat.st_atim.tv_sec = 0;
-	root_stat.st_mtim.tv_sec = 0;
-	root_stat.st_ctim.tv_sec = 0;
+
+	RC_WRAP(clock_gettime, CLOCK_REALTIME, &ts);
+
+	root_stat.st_atim.tv_sec = ts.tv_sec;
+	root_stat.st_mtim.tv_sec = ts.tv_sec;
+	root_stat.st_ctim.tv_sec = ts.tv_sec;
 
 	return 0;
 }

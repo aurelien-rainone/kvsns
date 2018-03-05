@@ -91,19 +91,26 @@ static int kvsns_ownerlist2str(kvsns_open_owner_t *ownerlist, int size,
 	return 0;
 }
 
-
 int kvsns_creat(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 		mode_t mode, kvsns_ino_t *newfile)
 {
+	int rc;
+	kvsns_ino_t tmp_ino;
+	struct stat parent_stat;
 	struct stat stat;
 
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_WRITE);
-	RC_WRAP(kvsns_create_entry, cred, parent, name, NULL,
-				  mode, newfile, KVSNS_FILE);
-	RC_WRAP(kvsns_get_stat, newfile, &stat);
-	RC_WRAP(extstore_create, *newfile);
 
-	return 0;
+	rc = kvsns_lookup(cred, parent, name, newfile, &parent_stat);
+	if (rc == 0)
+		return -EEXIST;
+
+	/* set an invalid inode for now */
+	tmp_ino = 0;
+	kvsns_fill_stats(&stat, tmp_ino, time(NULL), 0, 0);
+	stat.st_gid = cred->gid;
+	stat.st_uid = cred->uid;
+	return extstore_create(*parent, name, newfile, &stat);
 }
 
 int kvsns_open(kvsns_cred_t *cred, kvsns_ino_t *ino, 

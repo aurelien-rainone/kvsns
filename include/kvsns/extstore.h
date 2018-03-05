@@ -46,7 +46,10 @@
 
 int extstore_init(struct collection_item *cfg_items);
 int extstore_fini();
-int extstore_create(kvsns_ino_t object);
+int extstore_create(kvsns_ino_t parent_ino,
+		    const char *name,
+		    kvsns_ino_t *ino,
+		    struct stat *stat);
 int extstore_open(kvsns_ino_t ino, int flags);
 int extstore_close(kvsns_ino_t ino);
 int extstore_read(kvsns_ino_t *ino,
@@ -68,10 +71,8 @@ int extstore_truncate(kvsns_ino_t *ino,
 		      struct stat *stat);
 int extstore_attach(kvsns_ino_t *ino,
 		    char *objid, int objid_len);
-int extstore_getattr(kvsns_ino_t *ino,
-		     struct stat *stat);
-int extstore_setattr(kvsns_ino_t *ino,
-		     const struct stat *stat);
+int extstore_getattr(kvsns_ino_t *ino, struct stat *stat);
+int extstore_setattr(kvsns_ino_t *ino, const struct stat *stat);
 int extstore_lookup(kvsns_ino_t *parent, char *name,
 		    struct stat *stat, kvsns_ino_t *ino);
 

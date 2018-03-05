@@ -184,7 +184,7 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dentry_t *dirent, 
 		return -EINVAL;
 
 	RC_WRAP(kvsns_access, cred, dir, KVSNS_ACCESS_READ);
-	RC_WRAP(inocache_get_path, *dir, S3_MAX_KEY_SIZE, dirpath, &isdir);
+	RC_WRAP(inocache_get_path, *dir, S3_MAX_KEY_SIZE, dirpath, &isdir, NULL);
 	if (!isdir)
 		return -ENOTDIR;
 
@@ -304,10 +304,12 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
 		  struct stat *setstat, int statflag)
 {
-	char k[KLEN];
+	/*char k[KLEN];*/
 	struct stat bufstat;
 	struct timeval t;
 	mode_t ifmt;
+
+	/*LogFatal(KVSNS_COMPONENT_KVSNS, "Not Implemented");*/
 
 	if (!cred || !ino || !setstat)
 		return -EINVAL;
@@ -318,10 +320,12 @@ int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
 	if (gettimeofday(&t, NULL) != 0)
 		return -errno;
 
-	RC_WRAP(kvsns_access, cred, ino, KVSNS_ACCESS_WRITE);
+	/*RC_WRAP(kvsns_access, cred, ino, KVSNS_ACCESS_WRITE);*/
 
-	snprintf(k, KLEN, "%llu.stat", *ino);
-	RC_WRAP(kvsal_get_stat, k, &bufstat);
+	/*snprintf(k, KLEN, "%llu.stat", *ino);*/
+	/*RC_WRAP(kvsal_get_stat, k, &bufstat);*/
+
+	kvsns_getattr(cred, ino, &bufstat);
 
 	/* ctime is to be updated if md are changed */
 	bufstat.st_ctim.tv_sec = t.tv_sec;
@@ -361,7 +365,8 @@ int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
 		bufstat.st_ctim.tv_nsec = setstat->st_ctim.tv_nsec;
 	}
 
-	return kvsal_set_stat(k, &bufstat);
+	/*return kvsal_set_stat(k, &bufstat);*/
+	return extstore_setattr(ino, &bufstat);
 }
 
 int kvsns_link(kvsns_cred_t *cred, kvsns_ino_t *ino,
