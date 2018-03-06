@@ -25,11 +25,16 @@
  * -------------
  */
 
+#include <pthread.h>
 #include "internal.h"
 #include "s3_common.h"
+#include "thpool.h"
 
 
 #define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
+#define MAX_ETAG_SIZE 256
+/* Overrides timeout defined in extstore_s3_req_cfg_t for PUT requests (ms) */
+#define PUT_REQUEST_TIMEOUT 10000000
 
 /* Default PUT properties */
 #define PUT_CONTENT_TYPE NULL
@@ -43,131 +48,18 @@
 #define PUT_SERVERSIDE_ENCRYPT 0
 
 typedef struct upload_mgr_{
-	/* used for initial multipart */
-	char * upload_id;
-
-	/* used for upload part object */
-	char **etags;
-	int next_etags_pos;
-
-	/* used for commit Upload */
-	GString *commitstr;
-	int remaining;
-	S3Status status;
+	char * upload_id;	/* filled during multipart prologue */
+	char **etags;		/* filled upon successfull part upload */
+	GString *commitstr;	/* commit upload xml string */
+	int ntowrite;		/* number of (xml) bytes to write */
+	S3Status status;	/* request final libs3 status */
 } upload_mgr_t;
 
-typedef struct list_parts_callback_data_
-{
-	int status;
-	int is_truncated;
-	char next_partnum_marker[24];
-	char initiator_id[256];
-	char initiator_name[256];
-	char owner_id[256];
-	char owner_name[256];
-	char storage_cls[256];
-	int num_parts;
-	int handle_parts_start;
-	int all_details;
-	upload_mgr_t *manager;
-} list_parts_callback_data_t;
-
-void print_list_multipart_hdr(int all_details)
-{
-	(void)all_details;
-}
-
-S3Status list_parts_cb(int is_truncated,
-		       const char *next_partnum_marker,
-		       const char *initiator_id,
-		       const char *initiator_name,
-		       const char *owner_id,
-		       const char *owner_name,
-		       const char *storage_cls,
-		       int num_parts,
-		       int handle_parts_start,
-		       const S3ListPart *parts,
-		       void *cb_data_)
-{
-	list_parts_callback_data_t *cb_data =
-		(list_parts_callback_data_t *) cb_data_;
-
-	cb_data->is_truncated = is_truncated;
-	cb_data->handle_parts_start = handle_parts_start;
-	upload_mgr_t *manager = cb_data->manager;
-
-	if (next_partnum_marker) {
-		snprintf(cb_data->next_partnum_marker,
-		sizeof(cb_data->next_partnum_marker), "%s",
-		next_partnum_marker);
-	} else {
-		cb_data->next_partnum_marker[0] = 0;
-	}
-
-	if (initiator_id) {
-		snprintf(cb_data->initiator_id,
-			 sizeof(cb_data->initiator_id),
-			 "%s", initiator_id);
-	} else {
-		cb_data->initiator_id[0] = 0;
-	}
-
-	if (initiator_name) {
-		snprintf(cb_data->initiator_name,
-			 sizeof(cb_data->initiator_name),
-			 "%s", initiator_name);
-	} else {
-		cb_data->initiator_name[0] = 0;
-	}
-
-	if (owner_id) {
-		snprintf(cb_data->owner_id,
-			 sizeof(cb_data->owner_id),
-			 "%s", owner_id);
-	} else {
-		cb_data->owner_id[0] = 0;
-	}
-
-	if (owner_name) {
-		snprintf(cb_data->owner_name,
-			 sizeof(cb_data->owner_name),
-			 "%s", owner_name);
-	} else {
-		cb_data->owner_name[0] = 0;
-	}
-
-	if (storage_cls) {
-		snprintf(cb_data->storage_cls,
-			 sizeof(cb_data->storage_cls),
-			 "%s", storage_cls);
-	} else {
-		cb_data->storage_cls[0] = 0;
-	}
-
-	int i;
-	for (i = 0; i < num_parts; i++) {
-		const S3ListPart *part = &(parts[i]);
-		manager->etags[handle_parts_start+i] = strdup(part->eTag);
-		manager->next_etags_pos++;
-		manager->remaining = manager->remaining - part->size;
-	}
-
-	cb_data->num_parts += num_parts;
-
-	return S3StatusOK;
-}
-
-typedef struct put_object_callback_data_
-{
-	FILE *infile;
-	growbuffer_t *gb;
-	uint64_t content_len, org_content_len;
-	uint64_t total_content_len, total_org_content_len;
-	/*< [OUT] request status */
-	S3Status status;
-	/*< [IN] request configuration */
-	const extstore_s3_req_cfg_t *config;
-
+typedef struct put_object_callback_data_ {
+	int fd;			/* file descriptor to read from */
+	uint64_t content_len;	/* total number of bytes to read */
+	off_t off;		/* offset where to start read at from fd */
+	S3Status status;	/* request libs3 status */
 } put_object_callback_data_t;
 
 static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
@@ -175,26 +67,26 @@ static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 	put_object_callback_data_t *cb_data =
 	(put_object_callback_data_t *) cb_data_;
 
-	int ret = 0;
+	ssize_t nread  = 0;
 	if (cb_data->content_len) {
-		int to_read = ((cb_data->content_len > (unsigned) bufsize) ?
-				(unsigned) bufsize : cb_data->content_len);
-		if (cb_data->gb)
-			growbuffer_read(&(cb_data->gb), to_read, &ret, buffer);
-		else if (cb_data->infile)
-			ret = fread(buffer, 1, to_read, cb_data->infile);
+		nread = ((cb_data->content_len > (unsigned) bufsize) ?
+			(unsigned) bufsize : cb_data->content_len);
+
+		nread = pread(cb_data->fd, buffer, nread, cb_data->off);
+		if (nread < 0) {
+			int rc = -errno;
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
+				"can't read from cache file errno=%d", rc);
+			return rc;
+		}
+
+		/* advance read offset */
+		cb_data->off += nread;
 	}
 
-	cb_data->content_len -= ret;
-	cb_data->total_content_len -= ret;
-	return ret;
+	cb_data->content_len -= nread;
+	return nread;
 }
-
-typedef struct multipart_part_data_ {
-	put_object_callback_data_t put_object_data;
-	int seq;
-	upload_mgr_t *manager;
-} multipart_part_data_t;
 
 S3Status initial_multipart_callback(const char * upload_id, void * cb_data_)
 {
@@ -204,15 +96,18 @@ S3Status initial_multipart_callback(const char * upload_id, void * cb_data_)
 	return S3StatusOK;
 }
 
+typedef struct multipart_part_data_ {
+	put_object_callback_data_t put_object_data;
+	char **etag;	/* points to manager.etags[curpart] */
+	int *set_etag;	/* points to manager.set_etags[curpart] */
+} multipart_part_data_t;
+
 S3Status multiparts_resp_props_cb(const S3ResponseProperties *props,
 				  void *cb_data_)
 {
 	multipart_part_data_t *cb_data;
 	cb_data = (multipart_part_data_t *) cb_data_;
-	int seq = cb_data->seq;
-	const char *etag = props->eTag;
-	cb_data->manager->etags[seq - 1] = strdup(etag);
-	cb_data->manager->next_etags_pos = seq;
+	strncpy(*(cb_data->etag), props->eTag, MAX_ETAG_SIZE);
 	return S3StatusOK;
 }
 
@@ -222,18 +117,6 @@ void _put_object_resp_complete_cb(S3Status status,
 {
 	struct put_object_callback_data_ *cb_data;
 	cb_data = (struct put_object_callback_data_*) (cb_data_);
-
-	/* set status and log error */
-	cb_data->status = status;
-	log_response_status_error(status, error);
-}
-
-void _list_part_resp_complete_cb(S3Status status,
-		      const S3ErrorDetails *error,
-		      void *cb_data_)
-{
-	struct list_parts_callback_data_ *cb_data;
-	cb_data = (struct list_parts_callback_data_*) (cb_data_);
 
 	/* set status and log error */
 	cb_data->status = status;
@@ -256,69 +139,95 @@ int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 {
 	upload_mgr_t *cb_data;
 	cb_data = (upload_mgr_t*) (cb_data_);
-	int ret = 0;
-	if (cb_data->remaining) {
-		int to_read = ((cb_data->remaining > bufsize) ?
-				bufsize : cb_data->remaining);
-		off_t curidx = cb_data->commitstr->len - cb_data->remaining;
-		memcpy(buffer, cb_data->commitstr->str + curidx, to_read);
-		cb_data->remaining -= to_read;
-		ret = to_read;
+	int nwritten = 0;
+	if (cb_data->ntowrite) {
+		nwritten = ((cb_data->ntowrite > bufsize) ?
+				bufsize : cb_data->ntowrite);
+		off_t off = cb_data->commitstr->len - cb_data->ntowrite;
+		memcpy(buffer, cb_data->commitstr->str + off, nwritten);
+		cb_data->ntowrite -= nwritten;
 	}
-	return ret;
+	return nwritten;
 }
 
-int try_get_parts_info(const S3BucketContext *ctx,
-		       const char *key,
-		       upload_mgr_t *manager,
-		       extstore_s3_req_cfg_t *req_cfg)
-{
-	int retries = req_cfg->retries;
-	int interval = req_cfg->sleep_interval;
+typedef struct thread_part_data_ {
+	const char *key;		/* s3 key  */
+	S3BucketContext *ctx;		/* s3 bucket context */
+	char *upload_id;		/* previously requested upload id */
+	int fd;				/* descriptor of the file to upload */
+	off_t part_off;			/* offset of the 1st byte for the part */
+	int curpart;			/* 0-based part sequence number */
+	S3PutProperties *put_props;	/* http PUT properties */
+	int retries;			/* number of retries */
+	int interval;			/* interval between failed replies */
+	int part_len;			/* size of current part */
+	char **etag;			/* [OUT] etag to fill upon completion */
+	int *set_etag;			/* [OUT] has etag been allocated */
+} thread_part_data_t;
 
-	S3ListPartsHandler list_parts_handler = {
+void send_part(void* cb_data_)
+{
+	int retries, interval, status;
+	thread_part_data_t *cb_data;
+	multipart_part_data_t part_data;
+
+	S3PutObjectHandler put_obj_handler = {
 		{
-			&log_response_properties,
-			&_list_part_resp_complete_cb
+			&multiparts_resp_props_cb,
+			&_put_object_resp_complete_cb
 		},
-		&list_parts_cb
+		&put_object_data_cb
 	};
 
-	list_parts_callback_data_t cb_data;
-	memset(&cb_data, 0, sizeof(list_parts_callback_data_t));
+	cb_data = (thread_part_data_t*) cb_data_;
+	memset(&part_data, 0, sizeof(multipart_part_data_t));
+	part_data.etag = cb_data->etag;
+	part_data.put_object_data.content_len = cb_data->part_len;
+	part_data.put_object_data.status = 0;
+	part_data.put_object_data.off = cb_data->part_off;
+	part_data.put_object_data.fd = cb_data->fd;
 
-	cb_data.num_parts = 0;
-	cb_data.all_details = 0;
-	cb_data.manager = manager;
-	cb_data.status = S3StatusOK;
+	retries = cb_data->retries;
+	interval = cb_data->interval;
+	status = S3StatusOK;
+
+	LogDebug(KVSNS_COMPONENT_EXTSTORE,
+	         "(multipart) uploading part partnum=%d partsz=%d",
+	         cb_data->curpart, cb_data->part_len);
+
 	do {
-		cb_data.is_truncated = 0;
-		do {
-			S3_list_parts((S3BucketContext*)ctx, key,
-				      cb_data.next_partnum_marker,
-				      manager->upload_id, 0, 0, 0,
-				      req_cfg->timeout, &list_parts_handler,
-				      &cb_data);
+		S3_upload_part(cb_data->ctx,
+			       cb_data->key,
+			       cb_data->put_props,
+			       &put_obj_handler,
+			       cb_data->curpart + 1,
+			       cb_data->upload_id,
+			       cb_data->part_len,
+			       NULL,
+			       PUT_REQUEST_TIMEOUT,
+			       &part_data);
 
-			/* Decrement retries and wait 1 second longer */
-			--retries;
-			++interval;
-		} while (should_retry(cb_data.status, retries, interval));
-			if (cb_data.status != S3StatusOK)
-				break;
-	} while (cb_data.is_truncated);
+		/* Decrement retries and wait 1 second longer */
+		--retries;
+		++interval;
+		status = part_data.put_object_data.status;
 
-	if (cb_data.status == S3StatusOK) {
-		if (!cb_data.num_parts)
-			print_list_multipart_hdr(cb_data.all_details);
-	} else {
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d",
-			S3_get_status_name(cb_data.status),
-			cb_data.status);
-		return -1;
+	} while (should_retry(status, retries, interval));
+
+	/* TODO: implement an event for premature cancellation */
+	int final_status = status;
+	if (final_status != S3StatusOK) {
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
+			"(multipart) error uploading part: %s s3sta=%d partnum=%d partlen=%d",
+			S3_get_status_name(final_status),
+			final_status,
+			cb_data->curpart, cb_data->part_len);
+		/*goto clean;*/
+	} else  {
+		LogDebug(KVSNS_COMPONENT_EXTSTORE,
+			 "(multipart) part uploaded partnum=%d partsz=%d",
+			 cb_data->curpart, cb_data->part_len);
 	}
-
-	return 0;
 }
 
 int put_object(const S3BucketContext *ctx,
@@ -327,16 +236,18 @@ int put_object(const S3BucketContext *ctx,
 	       const char *src_file)
 {
 	int rc;
+	int i;
+	int fd;
 	uint64_t content_len;
+	/*S3Status status;*/
+	S3RequestContext *req_ctx = NULL;
 	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
 	S3Status final_status;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
-	put_object_callback_data_t cb_data;
-
-	cb_data.infile = fopen(src_file, "rb");
-	if (!cb_data.infile) {
+	fd = open(src_file, O_RDONLY, "rb");
+	if (fd == -1) {
 		rc = errno;
 		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			"can't open cached file src=%s rc=%d",
@@ -355,13 +266,6 @@ int put_object(const S3BucketContext *ctx,
 	}
 
 	content_len = statbuf.st_size;
-	cb_data.total_content_len = content_len;
-	cb_data.total_org_content_len = content_len;
-	cb_data.content_len = content_len;
-	cb_data.org_content_len = content_len;
-	cb_data.gb = 0;
-	cb_data.status = S3StatusOK;
-	cb_data.config = req_cfg;
 
 	S3PutProperties put_props = {
 		PUT_CONTENT_TYPE,
@@ -377,6 +281,9 @@ int put_object(const S3BucketContext *ctx,
 	};
 
 	if (content_len <= MULTIPART_CHUNK_SIZE) {
+
+		/* single part upload */
+
 		S3PutObjectHandler put_obj_handler = {
 			{
 				&log_response_properties,
@@ -385,9 +292,25 @@ int put_object(const S3BucketContext *ctx,
 			&put_object_data_cb
 		};
 
+		put_object_callback_data_t cb_data;
+		cb_data.content_len = content_len;
+		cb_data.status = S3StatusOK;
+		cb_data.fd = fd;
+		cb_data.off = 0;
+
+		LogInfo(KVSNS_COMPONENT_EXTSTORE,
+			 "(singlepart) uploading object totsz=%d",
+			 content_len);
+
 		do {
-			S3_put_object(ctx, key, content_len, &put_props,
-				      0, 0, &put_obj_handler, &cb_data);
+			S3_put_object(ctx,
+				      key,
+				      content_len,
+				      &put_props,
+				      NULL,
+				      PUT_REQUEST_TIMEOUT,
+				      &put_obj_handler,
+				      &cb_data);
 
 			/* Decrement retries and wait 1 second longer */
 			--retries;
@@ -395,37 +318,49 @@ int put_object(const S3BucketContext *ctx,
 			final_status = cb_data.status;
 		} while (should_retry(final_status, retries, interval));
 
-		if (cb_data.infile)
-			fclose(cb_data.infile);
-		else if (cb_data.gb)
-			growbuffer_destroy(cb_data.gb);
+		if (fd != -1)
+			close(fd);
 
-		if (final_status != S3StatusOK) {
+		if (final_status != S3StatusOK)
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error single part upload %s s3sta=%d",
 				S3_get_status_name(final_status), cb_data.status);
-		} else if (cb_data.content_len) {
+		else if (cb_data.content_len)
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
 				"error single part upload, remaining %llu bytes from cached file",
 				(unsigned long long) cb_data.content_len);
-		}
 
 	} else {
 
-		upload_mgr_t manager;
-		uint64_t total_content_len = content_len;
-		uint64_t todo_content_len = content_len;
-		multipart_part_data_t part_data;
-		int part_content_len = 0;
-		int seq;
-		const int total_seq = (content_len
-			+ MULTIPART_CHUNK_SIZE - 1)
-				/ MULTIPART_CHUNK_SIZE;
+		/* multipart upload
+		 *
+		 * Because the number of parts can be gigantic, we want a clear
+		 * limit on the memory allocated during a multipart upload.
+		 * The number of parts is divided into groups of parts, called
+		 * blocks, blocks being processed sequentially.
+		 */
 
+		/* number of threads in the pool  */
+		const int nmaxthreads = 4;
+		/* process the parts by blocks of 'parts_per_block' parts */
+		const int parts_per_block = 3;	/* TODO: find a `good` value ...*/
+
+		/* the number of parts */
+		const int nparts = (content_len + MULTIPART_CHUNK_SIZE - 1)
+				       / MULTIPART_CHUNK_SIZE;
+		const int nblocks = (nparts + parts_per_block - 1) / parts_per_block;
+
+		int curpart;
+		int curblock;
+
+		upload_mgr_t manager;
 		manager.upload_id = NULL;
 		manager.commitstr = NULL;
-		manager.etags = malloc(sizeof(char *) * total_seq);
-		manager.next_etags_pos = 0;
+		manager.etags = malloc(sizeof(char *) * nparts);
+		for (i = 0; i < nparts; ++i) {
+			manager.etags[i] = malloc(sizeof(char) * MAX_ETAG_SIZE);
+			memset(manager.etags[i], 0, MAX_ETAG_SIZE);
+		}
 		manager.status = S3StatusOK;
 
 		S3MultipartInitialHandler handler = {
@@ -436,28 +371,24 @@ int put_object(const S3BucketContext *ctx,
 			&initial_multipart_callback
 		};
 
-		S3PutObjectHandler put_obj_handler = {
-			{
-				&multiparts_resp_props_cb,
-				&_put_object_resp_complete_cb
-			},
-			&put_object_data_cb
-		};
-
 		S3MultipartCommitHandler commit_handler = {
 			{
 				&log_response_properties,
 				&_manager_resp_complete_cb
 			},
 			&multipart_put_xml_cb,
-			0
+			NULL
 		};
 
-
 		do {
-			S3_initiate_multipart((S3BucketContext*)ctx, key, 0,
-					      &handler, 0, req_cfg->timeout,
+			S3_initiate_multipart((S3BucketContext*)ctx,
+					      key,
+					      NULL,
+					      &handler,
+					      NULL,
+					      req_cfg->timeout,
 					      &manager);
+
 			/* Decrement retries and wait 1 second longer */
 			--retries;
 			++interval;
@@ -481,71 +412,74 @@ int put_object(const S3BucketContext *ctx,
 			goto clean;
 		}
 
-		todo_content_len -= MULTIPART_CHUNK_SIZE * manager.next_etags_pos;
-		for (seq = manager.next_etags_pos + 1; seq <= total_seq; seq++) {
-			memset(&part_data, 0, sizeof(multipart_part_data_t));
-			part_data.manager = &manager;
-			part_data.seq = seq;
-			part_data.put_object_data = cb_data;
-			part_content_len = ((content_len > MULTIPART_CHUNK_SIZE) ?
-				MULTIPART_CHUNK_SIZE : content_len);
 
-			LogDebug(KVSNS_COMPONENT_EXTSTORE,
-				"sending multipart seq=%d/%d partlen=%d",
-				seq, total_seq, part_content_len);
-			part_data.put_object_data.content_len = part_content_len;
-			part_data.put_object_data.org_content_len = part_content_len;
-			part_data.put_object_data.total_content_len = todo_content_len;
-			part_data.put_object_data.total_org_content_len = total_content_len;
-			put_props.md5 = 0;
-			retries = req_cfg->retries;
-			interval = req_cfg->sleep_interval;
+		LogInfo(KVSNS_COMPONENT_EXTSTORE, 
+			"(multipart) initiating upload upload nparts=%d totsz=%d",
+			nparts, content_len);
 
+		/* allocate thread part data */
+		thread_part_data_t *thread_data;
 
-			/* TODO: Aurélien this is just a test for developement, we'll need to find
-			 * a value that suits all needs */
-			req_cfg->timeout = 10000000;
+		/* TODO: cleanup in case of thread cancellation */
+		thread_data = malloc(sizeof(thread_part_data_t) * (
+				     nparts < parts_per_block ?
+				     nparts : parts_per_block));
 
-			do {
-				S3_upload_part((S3BucketContext*)ctx,
-					       key,
-					       &put_props,
-					       &put_obj_handler,
-					       seq,
-					       manager.upload_id,
-					       part_content_len,
-					       0,
-					       req_cfg->timeout,
-					       &part_data);
+		/* setup a thread pool with 4 threads */
+		threadpool thpool = thpool_init(nmaxthreads);
 
-				/* Decrement retries and wait 1 second longer */
-				--retries;
-				++interval;
-				final_status = part_data.put_object_data.status;
+		for (curblock = 0; curblock < nblocks; ++curblock) {
+			int nparts_curblock = (curblock == nblocks - 1)?
+				nparts % parts_per_block : parts_per_block;
 
-			} while (should_retry(final_status, retries, interval));
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
+				"starting upload block %d/%d (%d parts)",
+				curblock, nblocks, nparts_curblock);
 
-			if (final_status != S3StatusOK) {
-				LogWarn(KVSNS_COMPONENT_EXTSTORE,
-					"error multipart upload %s seq=%d s3sta=%d",
-					S3_get_status_name(final_status),
-					seq, final_status);
-				goto clean;
+			for (i = 0, curpart = curblock * parts_per_block;
+			     curpart < (curblock * parts_per_block + nparts_curblock);
+			     ++i, ++curpart) {
+
+				/* copy thread data */
+				thread_data[i].ctx = (S3BucketContext*) ctx;
+				thread_data[i].key = key;
+				thread_data[i].curpart = curpart;
+				thread_data[i].put_props = &put_props;
+				thread_data[i].retries = retries;
+				thread_data[i].interval = interval;
+				thread_data[i].part_len = ((content_len > MULTIPART_CHUNK_SIZE)
+							   ? MULTIPART_CHUNK_SIZE : content_len);
+				thread_data[i].etag = &(manager.etags[curpart]);
+				thread_data[i].upload_id = manager.upload_id;
+				thread_data[i].part_off = curpart * MULTIPART_CHUNK_SIZE;
+				thread_data[i].fd = fd;
+
+				final_status = S3StatusOK;
+
+				content_len -= MULTIPART_CHUNK_SIZE;
+
+				thpool_add_work(thpool, send_part, &thread_data[i]);
 			}
-			content_len -= MULTIPART_CHUNK_SIZE;
-			todo_content_len -= MULTIPART_CHUNK_SIZE;
+
+			thpool_wait(thpool);
+
+			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
+				"processed upload block %d/%d (%d parts)",
+				curblock, nblocks, nparts_curblock);
 		}
 
-		int i;
+		thpool_destroy(thpool);
+		free(thread_data);
+
 		manager.commitstr = g_string_new("<CompleteMultipartUpload>");
-		for (i = 0; i < total_seq; i++) {
+		for (curpart = 0; curpart < nparts; ++curpart) {
 			g_string_append_printf(manager.commitstr,
 					       "<Part><PartNumber>%d</PartNumber>"
 					       "<ETag>%s</ETag></Part>",
-					       i + 1, manager.etags[i]);
+					       curpart + 1, manager.etags[curpart]);
 		}
 		g_string_append(manager.commitstr, "</CompleteMultipartUpload>");
-		manager.remaining = manager.commitstr->len;
+		manager.ntowrite = manager.commitstr->len;
 		manager.status = S3StatusOK;
 
 		do {
@@ -553,7 +487,7 @@ int put_object(const S3BucketContext *ctx,
 						     key,
 						     &commit_handler,
 						     manager.upload_id,
-						     manager.remaining,
+						     manager.commitstr->len,
 						     0,
 						     req_cfg->timeout,
 						     &manager);
@@ -577,11 +511,14 @@ int put_object(const S3BucketContext *ctx,
 clean:
 		if (manager.upload_id)
 			free(manager.upload_id);
-		for (i = 0; i < manager.next_etags_pos; i++)
-			free(manager.etags[i]);
+		for (curpart = 0; curpart < nparts; curpart++)
+			free(manager.etags[curpart]);
 		if (manager.commitstr)
 			g_string_free(manager.commitstr, TRUE);
 		free(manager.etags);
+		if (req_ctx)
+			S3_destroy_request_context(req_ctx);
+		req_ctx = NULL;
 	}
 
 	if (final_status != S3StatusOK) {

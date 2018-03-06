@@ -9,6 +9,7 @@ SET(extstore_LIB_SRCS
    s3_del_object.c
    mru.c
    internal.c
+   thpool.c
 )
 
 # require LIBS3 w/API version 1.x
