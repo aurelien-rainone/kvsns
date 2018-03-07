@@ -239,7 +239,6 @@ int put_object(const S3BucketContext *ctx,
 	int rc;
 	int i;
 	int fd;
-	S3RequestContext *req_ctx = NULL;
 	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
 	S3Status final_status;
 	int retries = req_cfg->retries;
@@ -515,9 +514,6 @@ clean:
 		if (manager.commitstr)
 			g_string_free(manager.commitstr, TRUE);
 		free(manager.etags);
-		if (req_ctx)
-			S3_destroy_request_context(req_ctx);
-		req_ctx = NULL;
 	}
 
 	if (final_status != S3StatusOK) {
