@@ -57,7 +57,7 @@ typedef struct upload_mgr_{
 
 typedef struct put_object_callback_data_ {
 	int fd;			/* file descriptor to read from */
-	uint64_t content_len;	/* total number of bytes to read */
+	uint64_t nremain;	/* remaining number of bytes to read */
 	off_t off;		/* offset where to start read at from fd */
 	S3Status status;	/* request libs3 status */
 } put_object_callback_data_t;
@@ -68,9 +68,9 @@ static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 	(put_object_callback_data_t *) cb_data_;
 
 	ssize_t nread  = 0;
-	if (cb_data->content_len) {
-		nread = ((cb_data->content_len > (unsigned) bufsize) ?
-			(unsigned) bufsize : cb_data->content_len);
+	if (cb_data->nremain) {
+		nread = ((cb_data->nremain > (unsigned) bufsize) ?
+			(unsigned) bufsize : cb_data->nremain);
 
 		nread = pread(cb_data->fd, buffer, nread, cb_data->off);
 		if (nread < 0) {
@@ -84,7 +84,7 @@ static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 		cb_data->off += nread;
 	}
 
-	cb_data->content_len -= nread;
+	cb_data->nremain -= nread;
 	return nread;
 }
 
@@ -163,6 +163,7 @@ typedef struct thread_part_data_ {
 	int part_len;			/* size of current part */
 	char **etag;			/* [OUT] etag to fill upon completion */
 	int *set_etag;			/* [OUT] has etag been allocated */
+	/*int *cancelled;			[> [INOUT] <]*/
 } thread_part_data_t;
 
 void send_part(void* cb_data_)
@@ -182,7 +183,7 @@ void send_part(void* cb_data_)
 	cb_data = (thread_part_data_t*) cb_data_;
 	memset(&part_data, 0, sizeof(multipart_part_data_t));
 	part_data.etag = cb_data->etag;
-	part_data.put_object_data.content_len = cb_data->part_len;
+	part_data.put_object_data.nremain = cb_data->part_len;
 	part_data.put_object_data.status = 0;
 	part_data.put_object_data.off = cb_data->part_off;
 	part_data.put_object_data.fd = cb_data->fd;
@@ -238,8 +239,6 @@ int put_object(const S3BucketContext *ctx,
 	int rc;
 	int i;
 	int fd;
-	uint64_t content_len;
-	/*S3Status status;*/
 	S3RequestContext *req_ctx = NULL;
 	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
 	S3Status final_status;
@@ -265,7 +264,7 @@ int put_object(const S3BucketContext *ctx,
 		return -rc;
 	}
 
-	content_len = statbuf.st_size;
+	const uint64_t total_len = statbuf.st_size;
 
 	S3PutProperties put_props = {
 		PUT_CONTENT_TYPE,
@@ -280,7 +279,7 @@ int put_object(const S3BucketContext *ctx,
 		PUT_SERVERSIDE_ENCRYPT,
 	};
 
-	if (content_len <= MULTIPART_CHUNK_SIZE) {
+	if (total_len <= MULTIPART_CHUNK_SIZE) {
 
 		/* single part upload */
 
@@ -293,19 +292,19 @@ int put_object(const S3BucketContext *ctx,
 		};
 
 		put_object_callback_data_t cb_data;
-		cb_data.content_len = content_len;
+		cb_data.nremain = total_len;
 		cb_data.status = S3StatusOK;
 		cb_data.fd = fd;
 		cb_data.off = 0;
 
 		LogInfo(KVSNS_COMPONENT_EXTSTORE,
-			 "(singlepart) uploading object totsz=%d",
-			 content_len);
+			 "(singlepart) uploading object totsz=%lu",
+			 total_len);
 
 		do {
 			S3_put_object(ctx,
 				      key,
-				      content_len,
+				      total_len,
 				      &put_props,
 				      NULL,
 				      PUT_REQUEST_TIMEOUT,
@@ -323,12 +322,12 @@ int put_object(const S3BucketContext *ctx,
 
 		if (final_status != S3StatusOK)
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
-				"error single part upload %s s3sta=%d",
+				"(singlepart) error upload %s s3sta=%d",
 				S3_get_status_name(final_status), cb_data.status);
-		else if (cb_data.content_len)
+		else if (cb_data.nremain)
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
-				"error single part upload, remaining %llu bytes from cached file",
-				(unsigned long long) cb_data.content_len);
+				"(singlepart) error upload, %llu bytes were not uploaded",
+				(unsigned long long) cb_data.nremain);
 
 	} else {
 
@@ -341,17 +340,17 @@ int put_object(const S3BucketContext *ctx,
 		 */
 
 		/* number of threads in the pool  */
-		const int nmaxthreads = 4;
+		const int nmaxthreads = 2;
 		/* process the parts by blocks of 'parts_per_block' parts */
-		const int parts_per_block = 3;	/* TODO: find a `good` value ...*/
+		const int parts_per_block = 4;	/* TODO: find a `good` value ...*/
 
 		/* the number of parts */
-		const int nparts = (content_len + MULTIPART_CHUNK_SIZE - 1)
+		const int nparts = (total_len + MULTIPART_CHUNK_SIZE - 1)
 				       / MULTIPART_CHUNK_SIZE;
 		const int nblocks = (nparts + parts_per_block - 1) / parts_per_block;
 
-		int curpart;
-		int curblock;
+		int remaining_len = total_len;
+		int remaining_parts = nparts;
 
 		upload_mgr_t manager;
 		manager.upload_id = NULL;
@@ -398,24 +397,22 @@ int put_object(const S3BucketContext *ctx,
 		if (manager.upload_id == NULL) {
 			final_status = S3StatusInterrupted;
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
-				"error initiating multipart (NULL upload_id) force error %s s3sta=%d",
-				S3_get_status_name(final_status),
-				final_status);
+				"(multipart) error initiating multipart (nul upload_id), forcing error %s s3sta=%d",
+				S3_get_status_name(final_status), final_status);
 			goto clean;
 		}
 
 		if (final_status != S3StatusOK) {
 			LogWarn(KVSNS_COMPONENT_EXTSTORE,
-				"error initiating multipart %s s3sta=%d",
-				S3_get_status_name(final_status),
-				final_status);
+				"(multipart) error initiating multipart %s s3sta=%d",
+				S3_get_status_name(final_status), final_status);
 			goto clean;
 		}
 
 
 		LogInfo(KVSNS_COMPONENT_EXTSTORE, 
 			"(multipart) initiating upload upload nparts=%d totsz=%d",
-			nparts, content_len);
+			nparts, total_len);
 
 		/* allocate thread part data */
 		thread_part_data_t *thread_data;
@@ -428,17 +425,15 @@ int put_object(const S3BucketContext *ctx,
 		/* setup a thread pool with 4 threads */
 		threadpool thpool = thpool_init(nmaxthreads);
 
+		int curpart = 0, curblock = 0;
 		for (curblock = 0; curblock < nblocks; ++curblock) {
-			int nparts_curblock = (curblock == nblocks - 1)?
-				nparts % parts_per_block : parts_per_block;
+			int nparts_curblock = (remaining_parts > parts_per_block ? parts_per_block : remaining_parts);
 
 			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
 				"starting upload block %d/%d (%d parts)",
 				curblock, nblocks, nparts_curblock);
 
-			for (i = 0, curpart = curblock * parts_per_block;
-			     curpart < (curblock * parts_per_block + nparts_curblock);
-			     ++i, ++curpart) {
+			for (i = 0; i < nparts_curblock; ++i, ++curpart) {
 
 				/* copy thread data */
 				thread_data[i].ctx = (S3BucketContext*) ctx;
@@ -447,8 +442,8 @@ int put_object(const S3BucketContext *ctx,
 				thread_data[i].put_props = &put_props;
 				thread_data[i].retries = retries;
 				thread_data[i].interval = interval;
-				thread_data[i].part_len = ((content_len > MULTIPART_CHUNK_SIZE)
-							   ? MULTIPART_CHUNK_SIZE : content_len);
+				thread_data[i].part_len = ((remaining_len > MULTIPART_CHUNK_SIZE)
+							   ? MULTIPART_CHUNK_SIZE : remaining_len);
 				thread_data[i].etag = &(manager.etags[curpart]);
 				thread_data[i].upload_id = manager.upload_id;
 				thread_data[i].part_off = curpart * MULTIPART_CHUNK_SIZE;
@@ -456,7 +451,7 @@ int put_object(const S3BucketContext *ctx,
 
 				final_status = S3StatusOK;
 
-				content_len -= MULTIPART_CHUNK_SIZE;
+				remaining_len -= MULTIPART_CHUNK_SIZE;
 
 				thpool_add_work(thpool, send_part, &thread_data[i]);
 			}
@@ -466,7 +461,11 @@ int put_object(const S3BucketContext *ctx,
 			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
 				"processed upload block %d/%d (%d parts)",
 				curblock, nblocks, nparts_curblock);
+
+			remaining_parts -= nparts_curblock;
 		}
+
+		LogDebug(KVSNS_COMPONENT_EXTSTORE, "destroying thread pool");
 
 		thpool_destroy(thpool);
 		free(thread_data);
