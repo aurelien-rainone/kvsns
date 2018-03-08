@@ -46,13 +46,13 @@
 		goto __label; })
 
 #ifdef DEBUG
-	#define ASSERT_FAIL(ex, fi, l, fu) \
+	#define ASSERT_FAIL(ex, fi, li, fu) \
 	do { \
 		fprintf(stderr, "%s:%i: %s: Assertion `%s` failed.\n", fi, li, fu, ex); \
 		assert(0); \
 	} while(0)
 #else
-	#define ASSERT_FAIL(ex, fi, l, fu) ((void)0)
+	#define ASSERT_FAIL(ex, fi, li, fu) ((void)0)
 #endif
 
 #if DEBUG
