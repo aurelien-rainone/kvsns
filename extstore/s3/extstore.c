@@ -463,8 +463,8 @@ int extstore_getattr(kvsns_ino_t *ino,
 	}
 
 	/* perform HEAD on s3 object*/
-	rc = stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
-			    &mtime, &size);
+	rc = get_stats_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
+			      &mtime, &size, NULL, NULL);
 
 	if (rc != 0) {
 		return rc;
