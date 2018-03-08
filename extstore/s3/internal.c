@@ -37,22 +37,6 @@
 #include "s3_common.h"
 #include "mru.h"
 
-/*
- * globals definitions
- */
-
-/* s3 bucket configuration */
-S3BucketContext bucket_ctx = {};
-char host[S3_MAX_HOSTNAME_SIZE] = "";
-char bucket[S3_MAX_BUCKET_NAME_SIZE] = "";
-char access_key[S3_MAX_ACCESS_KEY_ID_SIZE] = "";
-char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE] = "";
-
-/*
- * s3 default request configuration, inifile configurable, specific requests may
- * override it.
- */
-extstore_s3_req_cfg_t def_s3_req_cfg = {};
 
 /* Inode cache management is split in 2 non intersecting caches, one for the
  * downloaded inodes and the other for the inodes to upload. */

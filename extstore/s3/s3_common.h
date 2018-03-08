@@ -29,12 +29,59 @@
  * KVSNS: S3 specific declarations.
  */
 
-#ifndef _S3_EXTSTORE_S3_METHODS_H
-#define _S3_EXTSTORE_S3_METHODS_H
+#ifndef _S3_EXTSTORE_S3_COMMON_H
+#define _S3_EXTSTORE_S3_COMMON_H
 
 #include <libs3.h>
 #include "internal.h"
 
+/* S3 constants/limits nor provided by libs3.h */
+#define S3_MAX_ACCESS_KEY_ID_SIZE 256		/* not sure about this */
+#define S3_MAX_SECRET_ACCESS_KEY_ID_SIZE 256	/* not sure about this */
+
+/* Default values for S3 requests configuration */
+#define S3_REQ_DEFAULT_RETRIES 3			/* maximum number of retries */
+#define S3_REQ_DEFAULT_SLEEP_INTERVAL 1		/*< 1s between 2 successive retries */
+#define S3_REQ_DEFAULT_TIMEOUT 10000		/*< 10s before considering failure */
+
+/* Default number of threads for multipart upload */
+#define S3_NUM_THREADS_UPLOAD 4
+
+/* Default PUT properties */
+#define PUT_CONTENT_TYPE NULL
+#define PUT_MD5 NULL
+#define PUT_CACHE_CONTROL NULL
+#define PUT_CONTENT_DISP_FNAME NULL
+#define PUT_CONTENT_ENCODING NULL
+#define PUT_EXPIRES -1
+#define PUT_CANNED_ACL S3CannedAclPrivate
+#define PUT_META_PROPS_COUNT 0
+#define PUT_SERVERSIDE_ENCRYPT 0
+
+/* Multipart chunk size */
+#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
+
+#define S3_MAX_ETAG_SIZE 256
+/* Overrides timeout defined in extstore_s3_req_cfg_t for PUT requests (ms) */
+#define S3_PUT_REQ_TIMEOUT 10000000
+
+
+/* s3/libs3 configuration */
+extern S3BucketContext bucket_ctx;
+extern char host[S3_MAX_HOSTNAME_SIZE];
+extern char bucket[S3_MAX_BUCKET_NAME_SIZE];
+extern char access_key[S3_MAX_ACCESS_KEY_ID_SIZE];
+extern char secret_key[S3_MAX_SECRET_ACCESS_KEY_ID_SIZE];
+
+/* S3 request configuration */
+typedef struct extstore_s3_req_cfg_ {
+	int retries;	    /* max retries for failed S3 requests */
+	int sleep_interval; /* sleep interval between successive retries (s) */
+	int timeout;	    /* request timeout (ms) */
+	int upload_nthreads;/* number of threads for upload */
+} extstore_s3_req_cfg_t;
+
+extern extstore_s3_req_cfg_t def_s3_req_cfg;
 
 /**
  * Test bucket existence/access.

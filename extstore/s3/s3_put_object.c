@@ -31,22 +31,6 @@
 #include "pthreadpool.h"
 
 
-#define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
-#define MAX_ETAG_SIZE 256
-/* Overrides timeout defined in extstore_s3_req_cfg_t for PUT requests (ms) */
-#define PUT_REQUEST_TIMEOUT 10000000
-
-/* Default PUT properties */
-#define PUT_CONTENT_TYPE NULL
-#define PUT_MD5 NULL
-#define PUT_CACHE_CONTROL NULL
-#define PUT_CONTENT_DISP_FNAME NULL
-#define PUT_CONTENT_ENCODING NULL
-#define PUT_EXPIRES -1
-#define PUT_CANNED_ACL S3CannedAclPrivate
-#define PUT_META_PROPS_COUNT 0
-#define PUT_SERVERSIDE_ENCRYPT 0
-
 typedef struct upload_mgr_{
 	char * upload_id;	/* filled during multipart prologue */
 	char **etags;		/* filled upon successfull part upload */
@@ -107,7 +91,7 @@ S3Status multiparts_resp_props_cb(const S3ResponseProperties *props,
 {
 	multipart_part_data_t *cb_data;
 	cb_data = (multipart_part_data_t *) cb_data_;
-	strncpy(*(cb_data->etag), props->eTag, MAX_ETAG_SIZE);
+	strncpy(*(cb_data->etag), props->eTag, S3_MAX_ETAG_SIZE);
 	return S3StatusOK;
 }
 
@@ -221,7 +205,7 @@ void send_part(void* cb_data_, size_t idx)
 			       tctx->upload_id,
 			       tctx->data[idx].part_len,
 			       NULL,
-			       PUT_REQUEST_TIMEOUT,
+			       S3_PUT_REQ_TIMEOUT,
 			       &part_data);
 
 		/* decrement retries and wait 1 second longer */
@@ -338,7 +322,7 @@ int put_object(const S3BucketContext *ctx,
 				      total_len,
 				      &put_props,
 				      NULL,
-				      PUT_REQUEST_TIMEOUT,
+				      S3_PUT_REQ_TIMEOUT,
 				      &put_obj_handler,
 				      &cb_data);
 
@@ -378,8 +362,8 @@ int put_object(const S3BucketContext *ctx,
 		manager.commitstr = NULL;
 		manager.etags = malloc(sizeof(char *) * nparts);
 		for (i = 0; i < nparts; ++i) {
-			manager.etags[i] = malloc(sizeof(char) * MAX_ETAG_SIZE);
-			memset(manager.etags[i], 0, MAX_ETAG_SIZE);
+			manager.etags[i] = malloc(sizeof(char) * S3_MAX_ETAG_SIZE);
+			memset(manager.etags[i], 0, S3_MAX_ETAG_SIZE);
 		}
 		manager.status = S3StatusOK;
 
