@@ -7,6 +7,7 @@ SET(extstore_LIB_SRCS
    s3_put_object.c
    s3_get_object.c
    s3_del_object.c
+   s3_list_bucket.c
    mru.c
    internal.c
    threadpool-pthreads.c

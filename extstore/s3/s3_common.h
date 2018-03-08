@@ -112,6 +112,24 @@ int del_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg);
 
+/**
+ * List S3 bucket content.
+ *
+ * @param ctx - [IN] libs3 bucket context.
+ * @param key - [IN] object key.
+ * @param req_cfg - [IN] config for this request.
+ * @param dirent - [OUT] directory entries to fill
+ * @param ndirent - [INOUT] dirent size (in inpu). Number of filled dirents (in
+ *                  output)
+ *
+ * @return 0 on success, a negative posix error code in case of error.
+ */
+int list_bucket(const S3BucketContext *ctx,
+		const char *key,
+		extstore_s3_req_cfg_t *req_cfg,
+		kvsns_dentry_t *dirent,
+		int *ndirent);
+
 /* forward declarations */
 typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
 
