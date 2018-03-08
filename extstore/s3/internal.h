@@ -70,11 +70,16 @@
 #define S3_REQ_DEFAULT_SLEEP_INTERVAL 1		/*< 1s between 2 successive retries */
 #define S3_REQ_DEFAULT_TIMEOUT 10000		/*< 10s before considering failure */
 
+/* Default number of threads for multipart upload */
+#define S3_NUM_THREADS_UPLOAD 4
+
+
 /* S3 request configuration */
 typedef struct extstore_s3_req_cfg_ {
 	int retries;	    /* max retries for failed S3 requests */
 	int sleep_interval; /* sleep interval between successive retries (s) */
 	int timeout;	    /* request timeout (ms) */
+	int upload_nthreads;/* number of threads for upload */
 } extstore_s3_req_cfg_t;
 
 int s3status2posix_error(const S3Status s3_errorcode);

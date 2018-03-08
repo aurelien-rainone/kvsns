@@ -366,9 +366,9 @@ int put_object(const S3BucketContext *ctx,
 		 */
 
 		/* number of threads in the pool  */
-		const int nmaxthreads = 4;
-		/* process the parts by blocks of 'parts_per_block' parts */
-		const int parts_per_block = 20;	/* TODO: find a `good` value ...*/
+		const int nmaxthreads = req_cfg->upload_nthreads;
+		/* process the parts by groups of 'parts_per_block' parts */
+		const int parts_per_block = 2 * nmaxthreads;
 
 		/* the number of parts */
 		const int nparts = (total_len + MULTIPART_CHUNK_SIZE - 1)
@@ -435,10 +435,9 @@ int put_object(const S3BucketContext *ctx,
 			goto clean;
 		}
 
-
 		LogInfo(KVSNS_COMPONENT_EXTSTORE, 
-			"(multipart) initiating upload upload nparts=%d totsz=%d",
-			nparts, total_len);
+			"(multipart) initiating upload nthreads=%d nparts=%d totsz=%d key=%s",
+			req_cfg->upload_nthreads, nparts, total_len, key);
 
 		/* setup a thread pool with 4 threads */
 		threadpool thpool = thpool_init(nmaxthreads);

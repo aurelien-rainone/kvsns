@@ -196,6 +196,7 @@ int extstore_init(struct collection_item *cfg_items)
 	def_s3_req_cfg.retries = S3_REQ_DEFAULT_RETRIES;
 	def_s3_req_cfg.timeout = S3_REQ_DEFAULT_TIMEOUT;
 	def_s3_req_cfg.sleep_interval = S3_REQ_DEFAULT_SLEEP_INTERVAL;
+	def_s3_req_cfg.upload_nthreads = S3_NUM_THREADS_UPLOAD;
 
 	item = NULL;
 	rc = get_config_item("s3", "req_timeout", cfg_items, &item);
@@ -220,6 +221,14 @@ int extstore_init(struct collection_item *cfg_items)
 	if (item != NULL)
 	    def_s3_req_cfg.sleep_interval =
 		    get_int_config_value(item, 1, S3_REQ_DEFAULT_SLEEP_INTERVAL, NULL);
+
+	item = NULL;
+	rc = get_config_item("s3", "upload_numthreads", cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL)
+	    def_s3_req_cfg.upload_nthreads =
+		    get_int_config_value(item, 1, S3_NUM_THREADS_UPLOAD, NULL);
 
 	/* check we can actually access the bucket */
 	rc = test_bucket(&bucket_ctx, &def_s3_req_cfg);
