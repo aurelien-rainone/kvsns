@@ -547,7 +547,7 @@ int wino_close(kvsns_ino_t ino)
 		goto remove_fd;
 	}
 
-	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(ino, S3_MAX_KEY_SIZE, s3_path);
 	build_cache_path(ino, write_cache_path, write_cache_t, MAXPATHLEN);
 
 	/* override default s3 request config */
@@ -626,34 +626,37 @@ void rino_mru_remove (void *item, void *data)
 /**
  * Build path of s3 object and return object directory and filename.
  *
- * @param object - object inode.
- * @param obj_dir - [OUT] full s3 directory path.
- * @param obj_fname - [OUT] s3 object filename, empty for a directory.
+ * @param object - [IN] object inode.
+ * @param dirlen - [IN] max dir length
+ * @param namelen - [IN] max name length
+ * @param obj_dir - [OUT] full s3 directory path
+ * @param obj_name - [OUT] s3 object filename, empty for a directory
  *
- * @note Returned directory path doesn't start with a '/' as libs3 requires
+ * @note returned directory path doesn't start with a '/' as libs3 requires
  * object keys to be formatted in this way. The bucket root is an empty string.
  * However directory paths are returned with a trailing '/', this is a s3
  * requirement.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
+int splitpath_from_inode(kvsns_ino_t object, size_t dirlen, size_t namelen,
+			 char *obj_dir, char *obj_name)
 {
 	char k[KLEN];
 	char v[VLEN];
 	kvsns_ino_t ino = object;
-	kvsns_ino_t root_ino = 0LL;
+	/*kvsns_ino_t root_ino = 0LL;*/
 	struct stat stat;
 
 	/* get root inode number */
-	RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);
-	sscanf(v, "%llu|", &root_ino);
+	/*RC_WRAP(kvsal_get_char, "KVSNS_PARENT_INODE", v);*/
+	/*sscanf(v, "%llu|", &root_ino);*/
 
 	/* init return values */
 	obj_dir[0] = '\0';
-	obj_fname[0] = '\0';
+	obj_name[0] = '\0';
 
-	while (ino != root_ino) {
+	while (ino != KVSNS_ROOT_INODE) {
 
 		/* current inode name */
 		snprintf(k, KLEN, "%llu.name", ino);
@@ -665,7 +668,7 @@ int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 			prepend(obj_dir, "/");
 			prepend(obj_dir, v);
 		} else {
-			strcpy(obj_fname, v);
+			strncpy(obj_name, v, namelen);
 		}
 
 		/* get parent inode */
@@ -678,23 +681,23 @@ int build_s3_object_path(kvsns_ino_t object, char *obj_dir, char *obj_fname)
 }
 
 /**
- * Build full path of S3 Object.
+ * Fetch the full path of an s3 path from its inode
  *
- * @param object - object inode.
- * @param obj_path - [OUT] full S3 path
+ * @param object - [IN] object inode
  * @param pathlen - [IN] max path length
+ * @param obj_path - [OUT] full s3 path
  * 
- * @note Returned path doesn't start with a '/' as libs3 requires object keys
+ * @note returned path doesn't start with a '/' as libs3 requires object keys
  * to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a S3 
+ * However directory paths are returned with a trailing '/', this is a s3 
  * requirement.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen)
+int fullpath_from_inode(kvsns_ino_t object, size_t pathlen, char *obj_path)
 {
 	char fname[VLEN];
-	RC_WRAP(build_s3_object_path, object, obj_path, fname);
+	RC_WRAP(splitpath_from_inode, object, pathlen, VLEN, obj_path, fname);
 	strcat(obj_path, fname);
 	return 0;
 }

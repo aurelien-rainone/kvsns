@@ -41,7 +41,7 @@ int extstore_create(kvsns_ino_t object)
 	char s3_path[S3_MAX_KEY_SIZE];
 	char cache_path[MAXPATHLEN];
 
-	build_s3_path(object, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(object, S3_MAX_KEY_SIZE, s3_path);
 	build_cache_path(object, cache_path, write_cache_t, MAXPATHLEN);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu s3_path=%s cache=%s", object, s3_path, cache_path);
@@ -296,7 +296,7 @@ int extstore_del(kvsns_ino_t *ino)
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
-	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(*ino, S3_MAX_KEY_SIZE, s3_path);
 
 	rc = del_object(&bucket_ctx, s3_path, &def_s3_req_cfg);
 	if (rc != 0) {
@@ -335,7 +335,7 @@ int extstore_read(kvsns_ino_t *ino,
 		if (!mru_mark_item(&rino_mru, mru_key_cmp_func, (void*) *ino)) {
 
 			/* File is not cached locally, we must download it.*/
-			build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+			fullpath_from_inode(*ino, S3_MAX_KEY_SIZE, s3_path);
 			rc = get_object(&bucket_ctx, s3_path, &def_s3_req_cfg,
 					cache_path, &mtime, &size);
 			if (rc != 0) {
@@ -397,7 +397,7 @@ int extstore_write(kvsns_ino_t *ino,
 	char s3_path[S3_MAX_KEY_SIZE];
 	char cache_path[MAXPATHLEN];
 
-	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(*ino, S3_MAX_KEY_SIZE, s3_path);
 	build_cache_path(*ino, cache_path, write_cache_t, MAXPATHLEN);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu off=%ld bufsize=%lu s3key=%s s3sz=%lu cache=%s",
@@ -440,7 +440,7 @@ int extstore_getattr(kvsns_ino_t *ino,
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
-	build_s3_path(*ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(*ino, S3_MAX_KEY_SIZE, s3_path);
 	ASSERT(s3_path[0] == '/');
 
 	/* check if a cached file descriptor exists for this inode, that would
@@ -507,7 +507,7 @@ int extstore_close(kvsns_ino_t ino)
 	int rc;
 	char s3_path[S3_MAX_KEY_SIZE];
 
-	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(ino, S3_MAX_KEY_SIZE, s3_path);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d s3key=%s", ino, s3_path);
 
@@ -526,7 +526,7 @@ int extstore_readdir(kvsns_ino_t ino)
 {
 	char s3_path[S3_MAX_KEY_SIZE];
 
-	build_s3_path(ino, s3_path, S3_MAX_KEY_SIZE);
+	fullpath_from_inode(ino, S3_MAX_KEY_SIZE, s3_path);
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, s3_path);
 	return 0;

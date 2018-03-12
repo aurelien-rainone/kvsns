@@ -77,7 +77,7 @@ void growbuffer_destroy(growbuffer_t *gb);
 
 void prepend(char* s, const char* t);
 
-int build_s3_path(kvsns_ino_t object, char *obj_path, size_t pathlen);
+int fullpath_from_inode(kvsns_ino_t object, size_t pathlen, char *obj_path);
 
 typedef enum cache_ { read_cache_t, write_cache_t } cache_t;
 
