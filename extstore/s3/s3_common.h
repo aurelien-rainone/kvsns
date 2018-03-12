@@ -138,6 +138,7 @@ int set_stats_object(const S3BucketContext *ctx, const char *key,
  * @param req_cfg - [IN] config for this request.
  * @param src_file - [IN] path of the file to read and send.
  *
+ * @note if src_file is NULL, a key with empty content is created.
  * @return 0 on success, a negative posix error code in case of error.
  */
 int put_object(const S3BucketContext *ctx,

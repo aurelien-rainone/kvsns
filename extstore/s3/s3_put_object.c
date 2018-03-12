@@ -257,29 +257,41 @@ int put_object(const S3BucketContext *ctx,
 	int fd;
 	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
 	S3Status final_status;
+	uint64_t total_len;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
-	fd = open(src_file, O_RDONLY, "rb");
-	if (fd == -1) {
-		rc = errno;
-		LogCrit(KVSNS_COMPONENT_EXTSTORE,
-			"can't open cached file src=%s rc=%d",
-			src_file, rc);
-		return -rc;
-	}
+	if (!ctx || !key | !req_cfg)
+		return -EINVAL;
 
-	/* stat the file to get its length */
-	struct stat statbuf;
-	if (stat(src_file, &statbuf) == -1) {
-		rc = errno;
-		LogCrit(KVSNS_COMPONENT_EXTSTORE,
-			"can't stat cached file, src=%d rc=%d",
-			src_file, rc);
-		return -rc;
-	}
+	if (src_file) {
+		fd = open(src_file, O_RDONLY, "rb");
+		if (fd == -1) {
+			rc = errno;
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
+				"can't open cached file src=%s rc=%d",
+				src_file, rc);
+			return -rc;
+		}
 
-	const uint64_t total_len = statbuf.st_size;
+		/* stat the file to get its length */
+		struct stat statbuf;
+		if (stat(src_file, &statbuf) == -1) {
+			rc = errno;
+			LogCrit(KVSNS_COMPONENT_EXTSTORE,
+				"can't stat cached file, src=%d rc=%d",
+				src_file, rc);
+			return -rc;
+		}
+		total_len = statbuf.st_size;
+
+	} else {
+		/* no source file, we will 'send' an empty file. Let's abuse the
+		 * file descriptor 0, normally reserved for stdin, as we should
+		 * never get it from `open`. */
+		fd = 0;
+		total_len = 0;
+	}
 
 	S3PutProperties put_props = {
 		PUT_CONTENT_TYPE,
@@ -332,7 +344,7 @@ int put_object(const S3BucketContext *ctx,
 			final_status = cb_data.status;
 		} while (should_retry(final_status, retries, interval));
 
-		if (fd != -1)
+		if (fd > 0)
 			close(fd);
 
 		if (final_status != S3StatusOK)
