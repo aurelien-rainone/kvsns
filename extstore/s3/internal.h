@@ -78,6 +78,8 @@ void growbuffer_destroy(growbuffer_t *gb);
 void prepend(char* s, const char* t);
 
 int fullpath_from_inode(kvsns_ino_t object, size_t pathlen, char *obj_path);
+int format_s3_key(const char *dir, const char *name,
+		  bool isdir, size_t pathlen, char *path);
 
 typedef enum cache_ { read_cache_t, write_cache_t } cache_t;
 

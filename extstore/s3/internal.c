@@ -686,10 +686,10 @@ int splitpath_from_inode(kvsns_ino_t object, size_t dirlen, size_t namelen,
  * @param object - [IN] object inode
  * @param pathlen - [IN] max path length
  * @param obj_path - [OUT] full s3 path
- * 
+ *
  * @note returned path doesn't start with a '/' as libs3 requires object keys
  * to be formatted in this way. The bucket root is an empty string.
- * However directory paths are returned with a trailing '/', this is a s3 
+ * However directory paths are returned with a trailing '/', this is a s3
  * requirement.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
@@ -699,6 +699,18 @@ int fullpath_from_inode(kvsns_ino_t object, size_t pathlen, char *obj_path)
 	char fname[VLEN];
 	RC_WRAP(splitpath_from_inode, object, pathlen, VLEN, obj_path, fname);
 	strcat(obj_path, fname);
+	return 0;
+}
+
+/**
+ * Format a s3 key path from its parent directory (should be empty if key is at
+ * bucket root), the key name and the fact that the key is a directory or a
+ * regular file.
+ */
+int format_s3_key(const char *dir, const char *name,
+		  bool isdir, size_t pathlen, char *path)
+{
+	snprintf(path, pathlen, "%s%s%s", dir, name, (isdir? "/" : ""));
 	return 0;
 }
 
