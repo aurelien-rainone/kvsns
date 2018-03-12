@@ -522,13 +522,108 @@ int extstore_close(kvsns_ino_t ino)
 	return 0;
 }
 
-int extstore_readdir(kvsns_ino_t ino)
+
+int fill_stats(struct stat *stat, kvsns_ino_t ino,
+	       kvsns_cred_t *cred, time_t mtime,
+	       int isdir, size_t size)
 {
+#define DEFAULT_DIRMODE 0755
+#define DEFAULT_FILEMODE 0644
+#define OPENBAR_DIRMODE 0777
+#define OPENBAR_FILEMODE 0666
+
+	int mode;
+	const bool openbar = true;
+
+	if (!stat || !cred)
+		return -EINVAL;
+
+	memset(stat, 0, sizeof(struct stat));
+
+	stat->st_uid = cred->uid;
+	stat->st_gid = cred->gid;
+	stat->st_ino = ino;
+
+	stat->st_atim.tv_sec = mtime;
+	stat->st_atim.tv_nsec = 0; /* time_t only hold seconds */
+
+	stat->st_mtim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_mtim.tv_nsec = stat->st_atim.tv_nsec;
+
+	stat->st_ctim.tv_sec = stat->st_atim.tv_sec;
+	stat->st_ctim.tv_nsec = stat->st_atim.tv_nsec;
+
+	if (isdir) {
+		mode = openbar? OPENBAR_DIRMODE: DEFAULT_DIRMODE;
+		stat->st_mode = S_IFDIR|mode;
+		stat->st_nlink = 2;
+		stat->st_size = 0;
+	} else {
+		mode = openbar? OPENBAR_FILEMODE: DEFAULT_FILEMODE;
+		stat->st_mode = S_IFREG|mode;
+		stat->st_nlink = 1;
+		stat->st_size = size;
+	}
+	return 0;
+}
+
+int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
+		     off_t offset, kvsns_dentry_t *dirent,
+		     int *size)
+{
+	int index;
+	time_t mtime;
+	uint64_t filelen;
+	kvsns_ino_t new_entry;
+	struct stat stat;
+	bool has_stat;
+	char s3key[S3_MAX_KEY_SIZE];
+	bool isdir;
+	int rc;
+	const int maxentries = *size;
 	char s3_path[S3_MAX_KEY_SIZE];
 
+	if (!cred || !dirent || !size)
+		return -EINVAL;
+
 	fullpath_from_inode(ino, S3_MAX_KEY_SIZE, s3_path);
+	rc = list_bucket(&bucket_ctx, s3_path, &def_s3_req_cfg, dirent, size);
+	if (rc) {
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"couldn't list bucket content rc=%d key=%s",
+			rc, s3_path);
+		return rc;
+	}
+
+	for (index = 0; index < maxentries; index++) {
+
+		/* If name is NULL, that's the end of the list */
+		if (dirent[index].name[0] == '\0')
+			break;
+
+		/* TODO: rename variable; s3_pth etc, ...*/
+		isdir = dirent[index].stats.st_mode == KVSNS_DIR,
+		format_s3_key(s3_path, dirent[index].name,
+			      isdir, S3_MAX_KEY_SIZE, s3key);
+
+		rc = get_stats_object(&bucket_ctx, s3key, &def_s3_req_cfg,
+				      &mtime, &filelen, &stat, &has_stat);
+		if (!has_stat) {
+
+			fill_stats(&stat, 0, cred, mtime, isdir, filelen);
+			set_stats_object(&bucket_ctx, s3key,
+					 &def_s3_req_cfg, &stat);
+		}
+
+		rc = kvsns_create_entry2(&ino, dirent[index].name,
+					 &new_entry, &stat);
+		if (rc == -EEXIST) {
+			LogFatal(KVSNS_COMPONENT_KVSNS,
+				 "entry already exists dirino=%llu key=%s name=%s ino=%llu",
+				 ino, dirent[index].name, new_entry);
+		}
+	}
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, s3_path);
 	return 0;
 }
-

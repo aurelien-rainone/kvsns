@@ -70,5 +70,8 @@ int extstore_attach(kvsns_ino_t *ino,
 		    char *objid, int objid_len);
 int extstore_getattr(kvsns_ino_t *ino,
 		     struct stat *stat);
-int extstore_readdir(kvsns_ino_t ino);
+
+int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
+		     off_t offset, kvsns_dentry_t *dirent,
+		     int *size);
 #endif

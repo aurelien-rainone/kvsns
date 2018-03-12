@@ -173,7 +173,7 @@ int kvsns_opendir(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_dir_t *ddir)
 	char pattern[KLEN];
 	if (!cred || ! dir || !ddir)
 		return -EINVAL;
-	
+
 	snprintf(pattern, KLEN, "%llu.dentries.*", *dir);
 
 	ddir->ino = *dir;
@@ -207,10 +207,11 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
 
 	/* check if the directory has already been listed */
 	snprintf(k, KLEN, "%llu.listed", dir->ino);
-	kvsal_get_char(k, v);
+	RC_WRAP(kvsal_get_char, k, v);
 	sscanf(v, "%d", &i);
-	if (i == 0) {
-		extstore_readdir(dir->ino);
+	if (!i) {
+		/* list from stable storage */
+		extstore_readdir(cred, dir->ino, offset, dirent, size);
 	}
 
 	items = (kvsal_item_t *)malloc(*size*sizeof(kvsal_item_t));

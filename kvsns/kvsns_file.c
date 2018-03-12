@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <syscall.h>
 #include <kvsns/kvsal.h>
@@ -319,4 +320,172 @@ int kvsns_attach(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 	RC_WRAP(extstore_attach, newfile, objid, objid_len);
 
 	return 0;
+}
+
+int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
+		       char *name, char *lnk, mode_t mode,
+		       kvsns_ino_t *new_entry, enum kvsns_type type)
+{
+	int rc;
+	char k[KLEN];
+	char v[KLEN];
+	struct stat bufstat;
+	struct stat parent_stat;
+	struct timeval t;
+
+	if (!cred || !parent || !name || !new_entry)
+		return -EINVAL;
+
+	if ((type == KVSNS_SYMLINK) && (lnk == NULL))
+		return -EINVAL;
+
+	rc = kvsns_lookup(cred, parent, name, new_entry);
+	if (rc == 0)
+		return -EEXIST;
+
+	RC_WRAP(kvsns_next_inode, new_entry);
+	RC_WRAP(kvsns_get_stat, parent, &parent_stat);
+
+	RC_WRAP(kvsal_begin_transaction);
+
+#ifdef KVSNS_S3
+	snprintf(k, KLEN, "%llu.name", *new_entry);
+	snprintf(v, VLEN, "%s", name);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+#endif
+
+	snprintf(k, KLEN, "%llu.dentries.%s",
+		 *parent, name);
+	snprintf(v, VLEN, "%llu", *new_entry);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+	snprintf(k, KLEN, "%llu.parentdir", *new_entry);
+	snprintf(v, VLEN, "%llu|", *parent);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+	/* Set stat */
+	memset(&bufstat, 0, sizeof(struct stat));
+	bufstat.st_uid = cred->uid;
+	bufstat.st_gid = cred->gid;
+	bufstat.st_ino = *new_entry;
+
+	if (gettimeofday(&t, NULL) != 0)
+		return -1;
+
+	bufstat.st_atim.tv_sec = t.tv_sec;
+	bufstat.st_atim.tv_nsec = 1000 * t.tv_usec;
+
+	bufstat.st_mtim.tv_sec = bufstat.st_atim.tv_sec;
+	bufstat.st_mtim.tv_nsec = bufstat.st_atim.tv_nsec;
+
+	bufstat.st_ctim.tv_sec = bufstat.st_atim.tv_sec;
+	bufstat.st_ctim.tv_nsec = bufstat.st_atim.tv_nsec;
+
+	switch (type) {
+	case KVSNS_DIR:
+		bufstat.st_mode = S_IFDIR|mode;
+		bufstat.st_nlink = 2;
+
+		/* indicates the directory has never been listed */
+		snprintf(k, KLEN, "%llu.listed", *new_entry);
+		RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, "0");
+
+		break;
+
+	case KVSNS_FILE:
+		bufstat.st_mode = S_IFREG|mode;
+		bufstat.st_nlink = 1;
+		break;
+
+	case KVSNS_SYMLINK:
+		bufstat.st_mode = S_IFLNK|mode;
+		bufstat.st_nlink = 1;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+	snprintf(k, KLEN, "%llu.stat", *new_entry);
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_stat, k, &bufstat);
+
+	if (type == KVSNS_SYMLINK) {
+		snprintf(k, KLEN, "%llu.link", *new_entry);
+		RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, lnk);
+	}
+
+	RC_WRAP_LABEL(rc, aborted, kvsns_amend_stat, &parent_stat,
+		      STAT_CTIME_SET|STAT_MTIME_SET);
+	RC_WRAP_LABEL(rc, aborted, kvsns_set_stat, parent, &parent_stat);
+
+	RC_WRAP(kvsal_end_transaction);
+	return 0;
+
+aborted:
+	kvsal_discard_transaction();
+	return rc;
+}
+
+int kvsns_create_entry2(kvsns_ino_t *parent, char *name,
+			kvsns_ino_t *new_entry, struct stat *stat)
+{
+	int rc;
+	char k[KLEN];
+	char v[KLEN];
+	struct stat parent_stat;
+
+	if (!parent || !name || !new_entry || !stat)
+		return -EINVAL;
+
+	if (S_ISLNK(stat->st_mode)) {
+		LogFatal(KVSNS_COMPONENT_KVSNS,
+			 "symlinks are not supported name=%s parent=%llu",
+			 name, *parent);
+		return -EINVAL;
+	}
+	RC_WRAP(kvsns_next_inode, new_entry);
+	RC_WRAP(kvsns_get_stat, parent, &parent_stat);
+
+	/* set inode */
+	stat->st_ino = *new_entry;
+
+	RC_WRAP(kvsal_begin_transaction);
+
+	snprintf(k, KLEN, "%llu.name", *new_entry);
+	snprintf(v, VLEN, "%s", name);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+	snprintf(k, KLEN, "%llu.dentries.%s",
+		 *parent, name);
+	snprintf(v, VLEN, "%llu", *new_entry);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+	snprintf(k, KLEN, "%llu.parentdir", *new_entry);
+	snprintf(v, VLEN, "%llu|", *parent);
+
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, v);
+
+	if (S_ISDIR(stat->st_mode)) {
+		/* indicates the directory has never been listed */
+		snprintf(k, KLEN, "%llu.listed", *new_entry);
+		RC_WRAP_LABEL(rc, aborted, kvsal_set_char, k, "0");
+	}
+
+	snprintf(k, KLEN, "%llu.stat", *new_entry);
+	RC_WRAP_LABEL(rc, aborted, kvsal_set_stat, k, stat);
+
+	RC_WRAP_LABEL(rc, aborted, kvsns_amend_stat, &parent_stat,
+		      STAT_CTIME_SET|STAT_MTIME_SET);
+	RC_WRAP_LABEL(rc, aborted, kvsns_set_stat, parent, &parent_stat);
+
+	RC_WRAP(kvsal_end_transaction);
+	return 0;
+
+aborted:
+	kvsal_discard_transaction();
+	return rc;
 }

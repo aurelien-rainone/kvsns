@@ -737,4 +737,10 @@ int kvsns_attach(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 		 char *objid, int objid_len, struct stat *stat,
 		 int statflags, kvsns_ino_t *newfile);
 
+
+int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
+		       char *name, char *lnk, mode_t mode,
+		       kvsns_ino_t *newdir, enum kvsns_type type);
+int kvsns_create_entry2(kvsns_ino_t *parent, char *name,
+			kvsns_ino_t *new_entry, struct stat *stat);
 #endif
