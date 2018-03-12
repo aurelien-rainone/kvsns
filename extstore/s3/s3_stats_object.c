@@ -1,4 +1,4 @@
-﻿/*
+/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
@@ -297,8 +297,10 @@ int set_stats_object(const S3BucketContext *ctx, const char *key,
 
 	if (cb_data.status != S3StatusOK) {
 		rc = s3status2posix_error(cb_data.status);
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "libs3 error errstr=%s s3sta=%d rc=%d key=%s",
-			S3_get_status_name(cb_data.status), cb_data.status, rc, key);
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"libs3 error errstr=%s s3sta=%d rc=%d key=%s",
+			S3_get_status_name(cb_data.status),
+			cb_data.status, rc, key);
 	}
 
 	/* free md strings */

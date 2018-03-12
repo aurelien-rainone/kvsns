@@ -1,4 +1,4 @@
-﻿/*
+/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
