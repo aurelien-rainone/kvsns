@@ -28,7 +28,7 @@
 #include <pthread.h>
 #include "internal.h"
 #include "s3_common.h"
-#include "thpool.h"
+#include "pthreadpool.h"
 
 
 #define MULTIPART_CHUNK_SIZE S3_MULTIPART_CHUNK_SIZE
@@ -151,26 +151,31 @@ int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 }
 
 typedef struct thread_part_data_ {
-	const char *key;		/* s3 key  */
-	S3BucketContext *ctx;		/* s3 bucket context */
-	char *upload_id;		/* previously requested upload id */
-	int fd;				/* descriptor of the file to upload */
 	off_t part_off;			/* offset of the 1st byte for the part */
 	int curpart;			/* 0-based part sequence number */
-	S3PutProperties *put_props;	/* http PUT properties */
-	int retries;			/* number of retries */
-	int interval;			/* interval between failed replies */
 	int part_len;			/* size of current part */
 	char **etag;			/* [OUT] etag to fill upon completion */
 	int *set_etag;			/* [OUT] has etag been allocated */
-	int *cancel;			/* [IN/OUT] indicates upload cancellation */
-	pthread_rwlock_t *cancel_lock;	/* locks `cancel` access */
 } thread_part_data_t;
 
-void send_part(void* cb_data_)
+typedef struct thread_context_ {
+	const char *key;		/* s3 key  */
+	S3BucketContext *ctx;		/* s3 bucket context */
+	S3PutProperties *put_props;	/* http PUT properties */
+	int retries;			/* number of retries */
+	int interval;			/* interval between failed replies */
+	char *upload_id;		/* previously requested upload id */
+	int fd;				/* descriptor of the file to upload */
+	volatile int *cancel;		/* [IN/OUT] indicates upload cancellation */
+	pthread_rwlock_t *cancel_lock;	/* locks `cancel` access */
+
+	thread_part_data_t *data;
+} thread_context_t;
+
+void send_part(void* cb_data_, size_t idx)
 {
 	int retries, interval, status;
-	thread_part_data_t *cb_data;
+	thread_context_t *tctx;
 	multipart_part_data_t part_data;
 
 	S3PutObjectHandler put_obj_handler = {
@@ -181,39 +186,40 @@ void send_part(void* cb_data_)
 		&put_object_data_cb
 	};
 
-	cb_data = (thread_part_data_t*) cb_data_;
-	memset(&part_data, 0, sizeof(multipart_part_data_t));
-	part_data.etag = cb_data->etag;
-	part_data.put_object_data.nremain = cb_data->part_len;
-	part_data.put_object_data.status = 0;
-	part_data.put_object_data.off = cb_data->part_off;
-	part_data.put_object_data.fd = cb_data->fd;
+	tctx = (thread_context_t *) cb_data_;
 
-	retries = cb_data->retries;
-	interval = cb_data->interval;
+	memset(&part_data, 0, sizeof(multipart_part_data_t));
+	part_data.etag = tctx->data[idx].etag;
+	part_data.put_object_data.nremain = tctx->data[idx].part_len;
+	part_data.put_object_data.status = 0;
+	part_data.put_object_data.off = tctx->data[idx].part_off;
+	part_data.put_object_data.fd = tctx->fd;
+
+	retries = tctx->retries;
+	interval = tctx->interval;
 	status = S3StatusOK;
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE,
-	         "(multipart) uploading part partnum=%d partsz=%d",
-	         cb_data->curpart, cb_data->part_len);
+	         "(multipart) uploading part idx=%lu partnum=%d partsz=%d",
+	         idx, idx + 1, tctx->data[idx].part_len);
 
 	int should_cancel = 0;
 
 	do {
 		/* check for cancellation before starting part upload */
-		pthread_rwlock_rdlock(cb_data->cancel_lock);
-		should_cancel = *(cb_data->cancel);
-		pthread_rwlock_unlock(cb_data->cancel_lock);
+		pthread_rwlock_rdlock(tctx->cancel_lock);
+		should_cancel = *(tctx->cancel);
+		pthread_rwlock_unlock(tctx->cancel_lock);
 		if (should_cancel)
 			goto cancelled;
 
-		S3_upload_part(cb_data->ctx,
-			       cb_data->key,
-			       cb_data->put_props,
+		S3_upload_part(tctx->ctx,
+			       tctx->key,
+			       tctx->put_props,
 			       &put_obj_handler,
-			       cb_data->curpart + 1,
-			       cb_data->upload_id,
-			       cb_data->part_len,
+			       idx + 1,
+			       tctx->upload_id,
+			       tctx->data[idx].part_len,
 			       NULL,
 			       PUT_REQUEST_TIMEOUT,
 			       &part_data);
@@ -224,9 +230,9 @@ void send_part(void* cb_data_)
 		status = part_data.put_object_data.status;
 
 		/* check for cancellation before retrying part upload */
-		pthread_rwlock_rdlock(cb_data->cancel_lock);
-		should_cancel = *(cb_data->cancel);
-		pthread_rwlock_unlock(cb_data->cancel_lock);
+		pthread_rwlock_rdlock(tctx->cancel_lock);
+		should_cancel = *(tctx->cancel);
+		pthread_rwlock_unlock(tctx->cancel_lock);
 		if (should_cancel)
 			goto cancelled;
 
@@ -235,27 +241,26 @@ void send_part(void* cb_data_)
 	if (status != S3StatusOK) {
 
 		/* part failure promotes itself to upload failure */
-		pthread_rwlock_wrlock(cb_data->cancel_lock);
-		*(cb_data->cancel) = 1;
-		pthread_rwlock_unlock(cb_data->cancel_lock);
+		pthread_rwlock_wrlock(tctx->cancel_lock);
+		*(tctx->cancel) = 1;
+		pthread_rwlock_unlock(tctx->cancel_lock);
 
 		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			"(multipart) error uploading part: %s s3sta=%d partnum=%d partlen=%d",
-			S3_get_status_name(status),
-			status,
-			cb_data->curpart, cb_data->part_len);
+			"(multipart) error uploading part: %s s3sta=%d idx=%lu partnum=%d partlen=%d",
+			S3_get_status_name(status), status,
+			idx, idx + 1, tctx->data[idx].part_len);
 	} else  {
 		LogDebug(KVSNS_COMPONENT_EXTSTORE,
-			 "(multipart) part uploaded partnum=%d partsz=%d",
-			 cb_data->curpart, cb_data->part_len);
+			 "(multipart) part uploaded idx=%lu partnum=%d partsz=%d",
+			 idx, idx + 1, tctx->data[idx].part_len);
 	}
 
 	return;
 
 cancelled:
 	LogDebug(KVSNS_COMPONENT_EXTSTORE,
-	         "(multipart) cancelled part partnum=%d partsz=%d",
-	         cb_data->curpart, cb_data->part_len);
+	         "(multipart) cancelled part idx=%lu partnum=%d partsz=%d",
+	         idx, idx + 1, tctx->data[idx].part_len);
 }
 
 int put_object(const S3BucketContext *ctx,
@@ -357,26 +362,16 @@ int put_object(const S3BucketContext *ctx,
 
 	} else {
 
-		/* multipart upload
-		 *
-		 * Because the number of parts can be gigantic, we want a clear
-		 * limit on the memory allocated during a multipart upload.
-		 * The number of parts is divided into groups of parts, called
-		 * blocks, blocks being processed sequentially.
-		 */
+		/* multipart upload */
 
 		/* number of threads in the pool  */
-		const int nmaxthreads = req_cfg->upload_nthreads;
-		/* process the parts by groups of 'parts_per_block' parts */
-		const int parts_per_block = 2 * nmaxthreads;
+		const size_t nmaxthreads = req_cfg->upload_nthreads;
 
 		/* the number of parts */
-		const int nparts = (total_len + MULTIPART_CHUNK_SIZE - 1)
+		const size_t nparts = (total_len + MULTIPART_CHUNK_SIZE - 1)
 				       / MULTIPART_CHUNK_SIZE;
-		const int nblocks = (nparts + parts_per_block - 1) / parts_per_block;
 
-		int remaining_len = total_len;
-		int remaining_parts = nparts;
+		size_t remaining_len = total_len;
 
 		upload_mgr_t manager;
 		manager.upload_id = NULL;
@@ -435,88 +430,53 @@ int put_object(const S3BucketContext *ctx,
 			goto clean;
 		}
 
-		LogInfo(KVSNS_COMPONENT_EXTSTORE, 
+		LogInfo(KVSNS_COMPONENT_EXTSTORE,
 			"(multipart) initiating upload nthreads=%d nparts=%d totsz=%d key=%s",
 			req_cfg->upload_nthreads, nparts, total_len, key);
 
-		/* setup a thread pool with 4 threads */
-		threadpool thpool = thpool_init(nmaxthreads);
+		/* setup a thread pool with `nmaxthreads` threads */
+		pthreadpool_t thpool = pthreadpool_create(nmaxthreads);
 
 		/* use a rwlock for cancellation */
 		pthread_rwlock_t cancel_lock;
 		pthread_rwlock_init(&cancel_lock, NULL);
-		int cancel_upload = 0;
+		volatile int cancel_upload = 0;
 
-		/* allocate thread data array (one per worker thread) */
-		const int nthread_data = nparts < parts_per_block ?
-					 nparts : parts_per_block;
-		thread_part_data_t *thread_data;
-		thread_data = malloc(sizeof(thread_part_data_t) * nthread_data);
-		for (i = 0; i < nthread_data; ++i) {
-			memset(&thread_data[i], 0, sizeof(thread_part_data_t));
-
-			/* set immutable fields */
-			thread_data[i].ctx = (S3BucketContext*) ctx;
-			thread_data[i].key = key;
-			thread_data[i].put_props = &put_props;
-			thread_data[i].retries = retries;
-			thread_data[i].interval = interval;
-			thread_data[i].upload_id = manager.upload_id;
-			thread_data[i].fd = fd;
-			thread_data[i].cancel = &cancel_upload;
-			thread_data[i].cancel_lock = &cancel_lock;
+		/* allocate thread data array (one per thread) */
+		/*const int nthread_data = nparts < parts_per_block ?*/
+					 /*nparts : parts_per_block;*/
+		thread_context_t tctx;
+		tctx.ctx = (S3BucketContext*) ctx;
+		tctx.key = key;
+		tctx.put_props = &put_props;
+		tctx.retries = retries;
+		tctx.interval = interval;
+		tctx.upload_id = manager.upload_id;
+		tctx.fd = fd;
+		tctx.cancel = &cancel_upload;
+		tctx.cancel_lock = &cancel_lock;
+		tctx.data = malloc(sizeof(thread_part_data_t) * nparts);
+		memset(tctx.data, 0, sizeof(thread_part_data_t) * nparts);
+		for (i = 0; i < nparts; ++i) {
+			tctx.data[i].curpart = i;
+			tctx.data[i].part_len = ((remaining_len > MULTIPART_CHUNK_SIZE)
+						? MULTIPART_CHUNK_SIZE : remaining_len);
+			tctx.data[i].etag = &(manager.etags[i]);
+			tctx.data[i].part_off = i * MULTIPART_CHUNK_SIZE;
+			remaining_len -= MULTIPART_CHUNK_SIZE;
 		}
+		pthreadpool_compute_1d(thpool, send_part, &tctx, nparts);
 
 		final_status = S3StatusOK;
-		int curpart = 0, curblock = 0;
-		for (curblock = 0; curblock < nblocks; ++curblock) {
-
-			int nparts_curblock = (remaining_parts > parts_per_block ?
-					       parts_per_block : remaining_parts);
-
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
-				"starting upload block %d/%d (%d parts)",
-				curblock, nblocks, nparts_curblock);
-
-			for (i = 0; i < nparts_curblock; ++i, ++curpart) {
-
-				/* update thread data for current part */
-				thread_data[i].curpart = curpart;
-				thread_data[i].part_len = ((remaining_len > MULTIPART_CHUNK_SIZE)
-							   ? MULTIPART_CHUNK_SIZE : remaining_len);
-				thread_data[i].etag = &(manager.etags[curpart]);
-				thread_data[i].part_off = curpart * MULTIPART_CHUNK_SIZE;
-
-				remaining_len -= MULTIPART_CHUNK_SIZE;
-
-				thpool_add_work(thpool, send_part, &thread_data[i]);
-			}
-
-			thpool_wait(thpool);
-
-			LogDebug(KVSNS_COMPONENT_EXTSTORE, 
-				"processed upload block %d/%d (%d parts)",
-				curblock, nblocks, nparts_curblock);
-
-			remaining_parts -= nparts_curblock;
-
-			/* check for cancellation before processing next block */
-			int should_cancel;
-			pthread_rwlock_rdlock(&cancel_lock);
-			should_cancel = cancel_upload;
-			pthread_rwlock_unlock(&cancel_lock);
-			if (should_cancel)
-				goto clean;
-		}
 
 		LogDebug(KVSNS_COMPONENT_EXTSTORE, "destroying thread pool");
 
 		manager.commitstr = g_string_new("<CompleteMultipartUpload>");
-		for (curpart = 0; curpart < nparts; ++curpart) {
+		for (i = 0; i < nparts; ++i) {
 			g_string_append_printf(manager.commitstr,
 					       "<Part><PartNumber>%d</PartNumber>"
 					       "<ETag>%s</ETag></Part>",
-					       curpart + 1, manager.etags[curpart]);
+					       i + 1, manager.etags[i]);
 		}
 		g_string_append(manager.commitstr, "</CompleteMultipartUpload>");
 		manager.ntowrite = manager.commitstr->len;
@@ -551,13 +511,14 @@ int put_object(const S3BucketContext *ctx,
 clean:
 		if (manager.upload_id)
 			free(manager.upload_id);
-		for (curpart = 0; curpart < nparts; curpart++)
-			free(manager.etags[curpart]);
+		for (i = 0; i < nparts; i++)
+			free(manager.etags[i]);
 		if (manager.commitstr)
 			g_string_free(manager.commitstr, TRUE);
 		free(manager.etags);
-		thpool_destroy(thpool);
-		free(thread_data);
+		pthreadpool_destroy(thpool);
+		if (tctx.data);
+			free(tctx.data);
 	}
 
 	if (final_status != S3StatusOK) {
