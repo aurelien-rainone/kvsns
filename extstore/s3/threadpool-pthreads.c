@@ -265,7 +265,8 @@ static void thread_compute_1d(struct pthreadpool* threadpool, struct thread_info
 		/* There are still other threads with work */
 		const size_t thread_number = thread->thread_number;
 		const size_t threads_count = threadpool->threads_count;
-		for (size_t tid = (thread_number + 1) % threads_count; tid != thread_number; tid = (tid + 1) % threads_count) {
+		size_t tid = (thread_number + 1) % threads_count;
+		for (; tid != thread_number; tid = (tid + 1) % threads_count) {
 			struct thread_info* other_thread = &threadpool->threads[tid];
 			while (atomic_decrement(&other_thread->range_length)) {
 				const size_t item_id = __sync_sub_and_fetch(&other_thread->range_end, 1);
@@ -356,8 +357,8 @@ struct pthreadpool* pthreadpool_create(size_t threads_count) {
 	threadpool->has_active_threads = 1;
 #endif
 	threadpool->active_threads = threadpool->threads_count;
-
-	for (size_t tid = 0; tid < threads_count; tid++) {
+	size_t tid = 0;
+	for (; tid < threads_count; tid++) {
 		threadpool->threads[tid].thread_number = tid;
 		pthread_create(&threadpool->threads[tid].thread_object, NULL, &thread_main, &threadpool->threads[tid]);
 	}
@@ -383,7 +384,8 @@ void pthreadpool_compute_1d(
 {
 	if (threadpool == NULL) {
 		/* No thread pool provided: execute function sequentially on the calling thread */
-		for (size_t i = 0; i < range; i++) {
+		size_t i = 0;
+		for (; i < range; i++) {
 			function(argument, i);
 		}
 	} else {
@@ -399,7 +401,8 @@ void pthreadpool_compute_1d(
 			threadpool->has_active_threads = 1;
 
 			/* Spread the work between threads */
-			for (size_t tid = 0; tid < threadpool->threads_count; tid++) {
+			size_t tid = 0;
+			for (; tid < threadpool->threads_count; tid++) {
 				struct thread_info* thread = &threadpool->threads[tid];
 				thread->range_start = multiply_divide(range, tid, threadpool->threads_count);
 				thread->range_end = multiply_divide(range, tid + 1, threadpool->threads_count);
@@ -484,7 +487,8 @@ void pthreadpool_compute_1d_tiled(
 {
 	if (threadpool == NULL) {
 		/* No thread pool provided: execute function sequentially on the calling thread */
-		for (size_t i = 0; i < range; i += tile) {
+		size_t i = 0;
+		for (; i < range; i += tile) {
 			function(argument, i, min(range - i, tile));
 		}
 	} else {
@@ -521,8 +525,9 @@ void pthreadpool_compute_2d(
 {
 	if (threadpool == NULL) {
 		/* No thread pool provided: execute function sequentially on the calling thread */
-		for (size_t i = 0; i < range_i; i++) {
-			for (size_t j = 0; j < range_j; j++) {
+		size_t i = 0, j;
+		for (; i < range_i; i++) {
+			for (j = 0; j < range_j; j++) {
 				function(argument, i, j);
 			}
 		}
@@ -570,8 +575,9 @@ void pthreadpool_compute_2d_tiled(
 {
 	if (threadpool == NULL) {
 		/* No thread pool provided: execute function sequentially on the calling thread */
-		for (size_t i = 0; i < range_i; i += tile_i) {
-			for (size_t j = 0; j < range_j; j += tile_j) {
+		size_t i = 0, j;
+		for (; i < range_i; i += tile_i) {
+			for (j = 0; j < range_j; j += tile_j) {
 				function(argument, i, j, min(range_i - i, tile_i), min(range_j - j, tile_j));
 			}
 		}
@@ -619,7 +625,8 @@ void pthreadpool_destroy(struct pthreadpool* threadpool) {
 		#endif
 
 		/* Wait until all threads return */
-		for (size_t thread = 0; thread < threadpool->threads_count; thread++) {
+		size_t thread = 0;
+		for (; thread < threadpool->threads_count; thread++) {
 			pthread_join(threadpool->threads[thread].thread_object, NULL);
 		}
 
