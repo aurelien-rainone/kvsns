@@ -48,6 +48,7 @@ static struct collection_item *cfg_items;
 int kvsns_start(const char *configpath)
 {
 	struct collection_item *errors = NULL;
+	struct collection_item *item;
 	int rc;
 
 	LogInfo(KVSNS_COMPONENT_KVSNS, "--- Starting kvsns ---");
@@ -58,6 +59,25 @@ int kvsns_start(const char *configpath)
 		LogCrit(KVSNS_COMPONENT_KVSNS, "Can't load config rc=%d", rc);
 		free_ini_config_errors(errors);
 		return -rc;
+	}
+
+	/* set log level from inifile */
+	item = NULL;
+	rc = get_config_item("kvsns", "log_level",
+			      cfg_items, &item);
+	if (rc != 0)
+		return -rc;
+	if (item != NULL) {
+	    char strlvl[64];
+	    kvsns_log_levels_t lvl;
+	    strncpy(strlvl, get_string_config_value(item, NULL), 64);
+	    rc = kvsns_parse_log_level(strlvl, &lvl);
+	    if (!rc) {
+		LogInfo(KVSNS_COMPONENT_KVSNS, "setting log level to %s", strlvl);
+		kvsns_set_log_level(KVSNS_COMPONENT_EXTSTORE, lvl);
+	    } else
+		LogWarn(KVSNS_COMPONENT_KVSNS,
+			"Can't parse log level, default unchanged");
 	}
 
 	rc = kvsal_init(cfg_items);
