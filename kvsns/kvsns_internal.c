@@ -270,3 +270,17 @@ int kvsns_lookup_path(kvsns_cred_t *cred, kvsns_ino_t *parent, char *path,
 	return rc;
 }
 
+void stats2str(char *dst, size_t size, const struct stat *stat)
+{
+	snprintf(dst, size,
+		 "dev=%lu ino=%lu nlnk=%lu mode=%u uid=%u gid=%u rdev=%lu "
+		 "sz=%lu blksz=%lu blks=%lu "
+		 "atim={%lu|%lu} mtim={%lu|%lu} ctim={%lu|%lu}",
+		 stat->st_dev, stat->st_ino, stat->st_nlink,
+		 stat->st_mode, stat->st_uid, stat->st_gid, stat->st_rdev,
+		 stat->st_size, stat->st_blksize, stat->st_blocks,
+		 stat->st_atim.tv_sec, stat->st_atim.tv_nsec,
+		 stat->st_mtim.tv_sec, stat->st_mtim.tv_nsec,
+		 stat->st_ctim.tv_sec, stat->st_ctim.tv_nsec);
+}
+

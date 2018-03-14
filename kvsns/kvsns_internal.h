@@ -59,5 +59,6 @@ int kvsns_update_stat(kvsns_ino_t *ino, int flags);
 int kvsns_amend_stat(struct stat *stat, int flags);
 int kvsns_delall_xattr(kvsns_cred_t *cred, kvsns_ino_t *ino);
 
-
+/* debug helper */
+void stats2str(char *dst, size_t size, const struct stat *stat);
 #endif
