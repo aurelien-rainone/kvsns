@@ -38,7 +38,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <kvsns/extstore.h>
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 #include "mru.h"
 

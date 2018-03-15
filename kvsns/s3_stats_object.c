@@ -27,7 +27,7 @@
 
 #include <stdbool.h>
 #include <strings.h>
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 
 

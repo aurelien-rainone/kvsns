@@ -26,7 +26,7 @@
  */
 
 #include <pthread.h>
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 #include "pthreadpool.h"
 

@@ -29,7 +29,7 @@
 #include <kvsns/kvsal.h>
 #include <hiredis/hiredis.h>
 #include <gmodule.h>
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 #include "mru.h"
 

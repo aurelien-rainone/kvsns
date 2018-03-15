@@ -25,7 +25,7 @@
  * -------------
  */
 
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 
 

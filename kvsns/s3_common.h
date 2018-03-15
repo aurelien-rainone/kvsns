@@ -33,7 +33,7 @@
 #define _S3_EXTSTORE_S3_COMMON_H
 
 #include <libs3.h>
-#include "internal.h"
+#include "extstore_internal.h"
 
 /* S3 constants/limits nor provided by libs3.h */
 #define S3_MAX_ACCESS_KEY_ID_SIZE 256		/* not sure about this */

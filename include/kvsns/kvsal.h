@@ -25,10 +25,6 @@
  * -------------
  */
 
-/* kvsns_test.c
- * KVSNS: simple test
- */
-
 #ifndef _KVSAL_H
 #define _KVSAL_H
 

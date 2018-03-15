@@ -1,4 +1,4 @@
-﻿/*
+/*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
  * Copyright (C) Cynny Space, 2018
@@ -25,10 +25,9 @@
  * -------------
  */
 
-#include "internal.h"
+#include "extstore_internal.h"
 #include "s3_common.h"
 #include <kvsns/kvsns.h>
-/*#include "../kvsns_utils.h"*/
 
 
 typedef struct list_bucket_cb_data_t

@@ -1,13 +1,28 @@
-SET(kvsns_LIB_SRCS
-    kvsns_init.c
-    kvsns_handle.c
-    kvsns_file.c
-    kvsns_internal.c
-    kvsns_xattr.c
-    kvsns_copy.c
-    kvsns_log.c
+add_library(kvsns SHARED
+   kvsns_init.c
+   kvsns_handle.c
+   kvsns_file.c
+   kvsns_internal.c
+   kvsns_xattr.c
+   kvsns_copy.c
+   kvsns_log.c
+   kvsal_redis.c
+   extstore_internal.c
+   extstore.c
+   s3_common.c
+   s3_stats_object.c
+   s3_test_bucket.c
+   s3_put_object.c
+   s3_get_object.c
+   s3_del_object.c
+   s3_list_bucket.c
+   mru.c
+   threadpool-pthreads.c
 )
 
-add_library(kvsns SHARED ${kvsns_LIB_SRCS})
-target_link_libraries(kvsns ini_config extstore kvsal)
-
+target_link_libraries(kvsns
+   ini_config
+   s3
+   hiredis
+   ${GLib_LIBRARY}
+)

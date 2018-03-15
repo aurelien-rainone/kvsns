@@ -53,9 +53,18 @@ if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
       message(FATAL_ERROR "Cannot find hiredis")
 endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
 
-# Build ancillary libs
-add_subdirectory(extstore/s3)
-add_subdirectory(kvsal/redis)
+# require LIBS3 w/API version 1.x
+find_package(LibS3 REQUIRED)
+if(NOT LIBS3_FOUND)
+    message(FATAL_ERROR "Cannot find libs3.")
+endif(NOT LIBS3_FOUND)
+
+find_package(GLib REQUIRED)
+if(NOT GLib_FOUND)
+    message(FATAL_ERROR "Cannot find GLib.")
+endif(NOT GLib_FOUND)
+
+include_directories(${GLib_INCLUDE_DIRS})
 
 add_subdirectory(kvsns)
 
