@@ -660,3 +660,21 @@ int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
 
 	return 0;
 }
+
+int extstore_mkdir(kvsns_ino_t *parent, const char *name, const struct stat *stat)
+{
+	int rc;
+	char parentkey[S3_MAX_KEY_SIZE];
+	char key[S3_MAX_KEY_SIZE];
+
+	fullpath_from_inode(*parent, S3_MAX_KEY_SIZE, parentkey);
+
+	format_s3_key(parentkey, name, true, S3_MAX_KEY_SIZE, key);
+	rc = put_object(&bucket_ctx, key, &def_s3_req_cfg, NULL);
+	if (rc) {
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"error creating empty `dir` file key=%s rc=%d",
+			key, rc);
+	}
+	return rc;
+}

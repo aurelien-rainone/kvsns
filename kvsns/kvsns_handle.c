@@ -71,10 +71,16 @@ int kvsns_get_root(kvsns_ino_t *ino)
 int kvsns_mkdir(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 		mode_t mode, kvsns_ino_t *newdir)
 {
+	struct stat stat;
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_WRITE);
-
-	return kvsns_create_entry(cred, parent, name, NULL,
-				  mode, newdir, KVSNS_DIR);
+	RC_WRAP(kvsns_create_entry, cred, parent, name,
+		NULL, mode, newdir, KVSNS_DIR);
+	/* TODO: would be faster in kvsns_create_entry was also retuning the
+	 * created stat (or passing it the stat) so that we save the call to
+	 * kvsns_get_stat */
+	RC_WRAP(kvsns_get_stat, newdir, &stat);
+	RC_WRAP(extstore_mkdir, parent, name, &stat);
+	return 0;
 }
 
 int kvsns_symlink(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,

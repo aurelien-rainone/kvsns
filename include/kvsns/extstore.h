@@ -73,4 +73,6 @@ int extstore_getattr(kvsns_ino_t *ino,
 int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
 		     off_t offset, kvsns_dentry_t *dirent,
 		     int *size);
+int extstore_mkdir(kvsns_ino_t *parent, const char *name,
+		   const struct stat *stat);
 #endif
