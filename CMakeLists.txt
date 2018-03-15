@@ -9,16 +9,12 @@ set(LIBKVSNS_EXTRA_VERSION "")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${CMAKE_SOURCE_DIR}/include -fPIC -g")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/") 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 set(LIBKVSNS_BASE_VERSION ${LIBKVSNS_MAJOR_VERSION}.${LIBKVSNS_MINOR_VERSION}.${LIBKVSNS_PATCH_LEVEL})
 
 message( STATUS "cmake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
 message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
-
-# Option (for choosing KVSAL backend)
-option(USE_KVS_REDIS "Use REDIS as a KVS in KVSAL" OFF)
-option(USE_KVS_S3 "Use S3 as KVS in KVSAL, with redis as cache" ON)
 
 option(USE_POSIX_STORE "Use POSIX directory as object store" OFF)
 option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
@@ -32,11 +28,7 @@ else(USE_FSAL_LUSTRE)
 endif(USE_FSAL_LUSTRE)
 
 # BCOND* variables for spec file */
-if (USE_KVS_REDIS)
-	set(BCOND_KVS_REDIS "%bcond_without")
-else (USE_KVS_REDIS)
-	set(BCOND_KVS_REDIS "%bcond_with")
-endif (USE_KVS_REDIS)
+set(BCOND_KVS_REDIS "%bcond_without")
 
 if (USE_POSIX_STORE)
 	set(BCOND_POSIX_STORE "%bcond_without")
@@ -68,7 +60,6 @@ if (USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
   message(STATUS "Disabling POSIX Store")
 endif(USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
 
-message(STATUS "USE_KVS_REDIS=${USE_KVS_REDIS}")
 message(STATUS "USE_POSIX_STORE=${USE_POSIX_STORE}")
 message(STATUS "USE_POSIX_OBJ=${USE_POSIX_OBJ}")
 message(STATUS "USE_RADOS=${USE_RADOS}")
@@ -94,8 +85,6 @@ if((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 endif((NOT HAVE_INI_CONFIG) OR (NOT HAVE_INI_CONFIG_H))
 
 ## Start building stuff ##
-if(USE_KVS_REDIS)
-
 find_library(HAVE_HIREDIS hiredis)
 check_library_exists(
     hiredis
@@ -108,24 +97,6 @@ check_include_files("hiredis/hiredis.h" HAVE_HIREDIS_H)
 if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
       message(FATAL_ERROR "Cannot find hiredis")
 endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
-endif(USE_KVS_REDIS)
-
-if(USE_KVS_S3)
-
-find_library(HAVE_HIREDIS hiredis)
-check_library_exists(
-    hiredis
-    redisCommand
-    ""
-    HAVE_HIREDIS
-    )
-check_include_files("hiredis/hiredis.h" HAVE_HIREDIS_H)
-
-if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
-      message(FATAL_ERROR "Cannot find hiredis")
-endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
-endif(USE_KVS_S3)
-
 
 ### Check for rados ###
 if(USE_RADOS)
@@ -148,8 +119,7 @@ endif(USE_RADOS)
 add_subdirectory(extstore)
 set(STORE_LIBRARY extstore)
 
-add_subdirectory(kvsal)
-set(KVSAL_LIBRARY kvsal)
+add_subdirectory(kvsal/redis)
 
 add_subdirectory(kvsns)
 
