@@ -8,6 +8,7 @@ add_library(kvsns SHARED
    kvsns_log.c
    kvsal_redis.c
    extstore_internal.c
+   extstore_readdir.c
    extstore.c
    s3_common.c
    s3_stats_object.c

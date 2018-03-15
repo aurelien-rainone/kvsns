@@ -447,8 +447,6 @@ int put_object(const S3BucketContext *ctx,
 		volatile int cancel_upload = 0;
 
 		/* allocate thread data array (one per thread) */
-		/*const int nthread_data = nparts < parts_per_block ?*/
-					 /*nparts : parts_per_block;*/
 		thread_context_t tctx;
 		tctx.ctx = (S3BucketContext*) ctx;
 		tctx.key = key;
@@ -542,3 +540,4 @@ clean:
 
 	return rc;
 }
+
