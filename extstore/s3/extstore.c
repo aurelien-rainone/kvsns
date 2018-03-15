@@ -532,6 +532,7 @@ int fill_stats(struct stat *stat, kvsns_ino_t ino,
 #define OPENBAR_FILEMODE 0666
 
 	int mode;
+	struct timeval t;
 	const bool openbar = true;
 
 	if (!stat || !cred)
@@ -543,14 +544,22 @@ int fill_stats(struct stat *stat, kvsns_ino_t ino,
 	stat->st_gid = cred->gid;
 	stat->st_ino = ino;
 
-	stat->st_atim.tv_sec = mtime;
-	stat->st_atim.tv_nsec = 0; /* time_t only hold seconds */
+	if (mtime) {
+		/* time_t only hold seconds */
+		stat->st_mtim.tv_sec = mtime;
+		stat->st_mtim.tv_nsec = 0;
+	} else {
+		if (gettimeofday(&t, NULL) != 0)
+			return -errno;
+		stat->st_mtim.tv_sec = t.tv_sec;
+		stat->st_mtim.tv_nsec = 1000 * t.tv_usec;
+	}
 
-	stat->st_mtim.tv_sec = stat->st_atim.tv_sec;
-	stat->st_mtim.tv_nsec = stat->st_atim.tv_nsec;
+	stat->st_atim.tv_sec = stat->st_mtim.tv_sec;
+	stat->st_atim.tv_nsec = stat->st_mtim.tv_nsec;
 
-	stat->st_ctim.tv_sec = stat->st_atim.tv_sec;
-	stat->st_ctim.tv_nsec = stat->st_atim.tv_nsec;
+	stat->st_ctim.tv_sec = stat->st_mtim.tv_sec;
+	stat->st_ctim.tv_nsec = stat->st_mtim.tv_nsec;
 
 	if (isdir) {
 		mode = openbar? OPENBAR_DIRMODE: DEFAULT_DIRMODE;
