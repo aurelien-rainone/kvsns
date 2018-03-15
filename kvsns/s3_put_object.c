@@ -250,18 +250,18 @@ cancelled:
 int put_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg,
-	       const char *src_file)
+	       const char *src_file,
+	       const struct stat *posix_stat)
 {
 	int rc;
 	int i;
 	int fd;
-	S3NameValue meta_properties[S3_MAX_METADATA_COUNT];
 	S3Status final_status;
 	uint64_t total_len;
 	int retries = req_cfg->retries;
 	int interval = req_cfg->sleep_interval;
 
-	if (!ctx || !key | !req_cfg)
+	if (!ctx || !key | !req_cfg | !posix_stat)
 		return -EINVAL;
 
 	if (src_file) {
@@ -293,6 +293,14 @@ int put_object(const S3BucketContext *ctx,
 		total_len = 0;
 	}
 
+	/* define request properties data */
+	S3NameValue mds[S3_POSIX_MD_COUNT];
+	for (i = 0; i < S3_POSIX_MD_COUNT; ++i) {
+		mds[i].name = malloc(sizeof(char) * S3_POSIX_MAXNAME_LEN);
+		mds[i].value = malloc(sizeof(char) * S3_POSIX_MAXVALUE_LEN);
+	}
+	posix2s3mds(&mds[0], posix_stat);
+
 	S3PutProperties put_props = {
 		PUT_CONTENT_TYPE,
 		PUT_MD5,
@@ -301,8 +309,8 @@ int put_object(const S3BucketContext *ctx,
 		PUT_CONTENT_ENCODING,
 		PUT_EXPIRES,
 		PUT_CANNED_ACL,
-		PUT_META_PROPS_COUNT,
-		meta_properties,
+		S3_POSIX_MD_COUNT,
+		mds,
 		PUT_SERVERSIDE_ENCRYPT,
 	};
 
@@ -399,7 +407,7 @@ int put_object(const S3BucketContext *ctx,
 		do {
 			S3_initiate_multipart((S3BucketContext*)ctx,
 					      key,
-					      NULL,
+					      &put_props,
 					      &handler,
 					      NULL,
 					      req_cfg->timeout,
@@ -517,13 +525,20 @@ clean:
 			free(tctx.data);
 	}
 
+	rc = 0;
 	if (final_status != S3StatusOK) {
-		int rc = s3status2posix_error(final_status);
+		rc = s3status2posix_error(final_status);
 		LogCrit(KVSNS_COMPONENT_EXTSTORE, "error %s s3sta=%d rc=%d",
 			S3_get_status_name(final_status),
 			final_status,
 			rc);
-		return rc;
 	}
-	return 0;
+
+	/* free md strings */
+	for (i = 0; i < S3_POSIX_MD_COUNT; ++i) {
+		free((char *) mds[i].name);
+		free((char *) mds[i].value);
+	}
+
+	return rc;
 }

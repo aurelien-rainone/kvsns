@@ -31,23 +31,6 @@
 #include "s3_common.h"
 
 
-#define S3_POSIX_MODE "posix-mode"
-#define S3_POSIX_UID "posix-uid"
-#define S3_POSIX_GID "posix-gid"
-#define S3_POSIX_ATIM "posix-atim"
-#define S3_POSIX_MTIM "posix-mtim"
-#define S3_POSIX_CTIM "posix-ctim"
-#define S3_POSIX_VER "posix-ver"
-
-#define S3_POSIX_MD_COUNT 7
-
-#define S3_POSIX_MAXNAME_LEN 32		/*< min length for a posix name s3 metadata */
-#define S3_POSIX_MAXVALUE_LEN 32	/*< min length for a posix value s3 metadata */
-
-/* In case the posix attributes stored on s3 are changed */
-#define S3_POSIX_STAT_VERSION 1
-#define S3_POSIX_MD_COUNT 7
-
 struct _resp_cb_data_t {
 	time_t mtime;		/*< [OUT] mtime to be by callback */
 	uint64_t size;		/*< [OUT] size to be by callback */
@@ -56,101 +39,6 @@ struct _resp_cb_data_t {
 	int statver;		/*< [OUT] version of posix attributes metadata set*/
 	int status;		/*< [OUT] request status */
 };
-
-/**
- * @brief posix2s3mds convert posix attributes to s3 metadata
- * @param dstmds [INOUT] array of preallocated s3 object metadata "key-value
- *        pairs", containing at least S3_POSIX_MD_COUNT elements. Name and
- * value maximum sizes are defined in S3_POSIX_MAXNAME_LEN and
- * S3_POSIX_MAXVALUE_LEN.
- * @param srcstat posix stat structure to convert from
- */
-void posix2s3mds(const S3NameValue *dstmds, const struct stat *srcstat)
-{
-	int i = 0;
-	strncpy((char*) dstmds[i].name, S3_POSIX_MODE, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_mode);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_UID, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_uid);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_GID, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_gid);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_ATIM, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_atim.tv_sec);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_MTIM, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_mtim.tv_sec);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_CTIM, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_ctim.tv_sec);
-	i++;
-	strncpy((char*) dstmds[i].name, S3_POSIX_VER, S3_POSIX_MAXNAME_LEN);
-	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%d", S3_POSIX_STAT_VERSION);
-}
-
-/**
- * @brief s3mds2posix convert s3 metadata to posix attributes
- * @param dststat [OUT] the posix stat structure to fill
- * @param ver [OUT] version of the metadata attributes
- * @param srcmds [IN] array of s3 object metadata "key-value pairs"
- * @param nmds [IN] number of elements in srcmds
- * @return true if every required attributes has been found and parsed, false
- * otherwise.
- */
-bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int nmds)
-{
-	int i, nvals = 0;
-	for (i = 0; i < nmds; i ++) {
-		const char *name = srcmds[i].name;
-		const char *value = srcmds[i].value;
-
-		/* st_ino and st_nlink are not stored on s3, as they depend on
-		 * the client context */
-
-		if (!strcasecmp(name, S3_POSIX_MODE)) {
-			dststat->st_mode = atoi(value);
-			nvals++;
-			continue;
-		}
-		if (!strcasecmp(name, S3_POSIX_UID)) {
-			dststat->st_uid = atoi(value);
-			nvals++;
-			continue;
-		}
-
-		if (!strcasecmp(name, S3_POSIX_GID)) {
-			dststat->st_gid = atoi(value);
-			nvals++;
-			continue;
-		}
-		if (!strcasecmp(name, S3_POSIX_ATIM)) {
-			dststat->st_atim.tv_sec = atoi(value);
-			dststat->st_atim.tv_nsec = 0;
-			nvals++;
-			continue;
-		}
-		if (!strcasecmp(name, S3_POSIX_MTIM)) {
-			dststat->st_mtim.tv_sec = atoi(value);
-			dststat->st_mtim.tv_nsec = 0;
-			nvals++;
-			continue;
-		}
-		if (!strcasecmp(name, S3_POSIX_CTIM)) {
-			dststat->st_ctim.tv_sec = atoi(value);
-			dststat->st_ctim.tv_nsec = 0;
-			nvals++;
-			continue;
-		}
-		if (!strcasecmp(name, S3_POSIX_VER)) {
-			*ver= atoi(value);
-			nvals++;
-			continue;
-		}
-	}
-	return nvals == S3_POSIX_MD_COUNT;
-}
 
 static S3Status _resp_props_cb(const S3ResponseProperties *props,
 			       void *cb_data_)

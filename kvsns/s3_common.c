@@ -110,3 +110,83 @@ void log_response_status_error(S3Status status, const S3ErrorDetails *error)
 					error->extraDetails[i].value);
 	}
 }
+
+void posix2s3mds(const S3NameValue *dstmds, const struct stat *srcstat)
+{
+	int i = 0;
+	strncpy((char*) dstmds[i].name, S3_POSIX_MODE, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_mode);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_UID, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_uid);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_GID, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%u", srcstat->st_gid);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_ATIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_atim.tv_sec);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_MTIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_mtim.tv_sec);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_CTIM, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%ld", srcstat->st_ctim.tv_sec);
+	i++;
+	strncpy((char*) dstmds[i].name, S3_POSIX_VER, S3_POSIX_MAXNAME_LEN);
+	snprintf((char*) dstmds[i].value, S3_POSIX_MAXVALUE_LEN, "%d", S3_POSIX_STAT_VERSION);
+}
+
+bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int nmds)
+{
+	int i, nvals = 0;
+	for (i = 0; i < nmds; i ++) {
+		const char *name = srcmds[i].name;
+		const char *value = srcmds[i].value;
+
+		/* st_ino and st_nlink are not stored on s3, as they depend on
+		 * the client context */
+
+		if (!strcasecmp(name, S3_POSIX_MODE)) {
+			dststat->st_mode = atoi(value);
+			nvals++;
+			continue;
+		}
+		if (!strcasecmp(name, S3_POSIX_UID)) {
+			dststat->st_uid = atoi(value);
+			nvals++;
+			continue;
+		}
+
+		if (!strcasecmp(name, S3_POSIX_GID)) {
+			dststat->st_gid = atoi(value);
+			nvals++;
+			continue;
+		}
+		if (!strcasecmp(name, S3_POSIX_ATIM)) {
+			dststat->st_atim.tv_sec = atoi(value);
+			dststat->st_atim.tv_nsec = 0;
+			nvals++;
+			continue;
+		}
+		if (!strcasecmp(name, S3_POSIX_MTIM)) {
+			dststat->st_mtim.tv_sec = atoi(value);
+			dststat->st_mtim.tv_nsec = 0;
+			nvals++;
+			continue;
+		}
+		if (!strcasecmp(name, S3_POSIX_CTIM)) {
+			dststat->st_ctim.tv_sec = atoi(value);
+			dststat->st_ctim.tv_nsec = 0;
+			nvals++;
+			continue;
+		}
+		if (!strcasecmp(name, S3_POSIX_VER)) {
+			*ver= atoi(value);
+			nvals++;
+			continue;
+		}
+	}
+	return nvals == S3_POSIX_MD_COUNT;
+}
+
+

@@ -537,14 +537,26 @@ int wino_close(kvsns_ino_t ino)
 	gpointer wkey;
 	char s3_path[S3_MAX_KEY_SIZE];
 	char write_cache_path[MAXPATHLEN];
+	struct stat stat;
+	kvsns_cred_t cred;
 
 	wkey = g_tree_lookup(wino_cache, (gpointer) ino);
 	if (!wkey)
 		return 0;
 
 	fd = (int) ((intptr_t) wkey);
-	rc = close(fd);
-	if (rc == -1) {
+	if (fstat(fd, &stat)) {
+		rc = -errno;
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
+			 "error getting file stat fd=%d errno=%d",
+			 fd, rc);
+		goto remove_fd;
+	}
+	/* XXX: report same gid/uid than cached file (is this ok ;-)?*/
+	cred.gid = stat.st_gid;
+	cred.uid = stat.st_uid;
+
+	if (close(fd)) {
 		rc = -errno;
 		LogCrit(KVSNS_COMPONENT_EXTSTORE,
 			 "error closing fd=%d errno=%d",
@@ -564,12 +576,13 @@ int wino_close(kvsns_ino_t ino)
 	 * reset after each part */
 	put_req_cfg.timeout = 5 * 60 * 1000; /* 5Min*/
 
-	/* transfer file to stable storage */
-	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
+	/* transfer file to stable storage, with default stats */
+	fill_stats(&stat, ino, &cred, 0, 0, stat.st_size);
+	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path, &stat);
 	if (rc) {
 		LogWarn(KVSNS_COMPONENT_EXTSTORE,
-			 "Couldn't upload file ino=%d s3key=%s fd=%d",
-			 ino, s3_path, fd);
+			 "Couldn't upload file ino=%d s3key=%s fd=%d rc=%d",
+			 ino, s3_path, fd, rc);
 	}
 
 remove_fd:

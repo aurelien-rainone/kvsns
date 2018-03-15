@@ -65,6 +65,23 @@
 /* Overrides timeout defined in extstore_s3_req_cfg_t for PUT requests (ms) */
 #define S3_PUT_REQ_TIMEOUT 10000000
 
+/* s3 persisted posix attributes */
+#define S3_POSIX_MODE "posix-mode"
+#define S3_POSIX_UID "posix-uid"
+#define S3_POSIX_GID "posix-gid"
+#define S3_POSIX_ATIM "posix-atim"
+#define S3_POSIX_MTIM "posix-mtim"
+#define S3_POSIX_CTIM "posix-ctim"
+#define S3_POSIX_VER "posix-ver"
+
+#define S3_POSIX_MD_COUNT 7
+
+#define S3_POSIX_MAXNAME_LEN 32		/*< min length for a posix name s3 metadata */
+#define S3_POSIX_MAXVALUE_LEN 32	/*< min length for a posix value s3 metadata */
+
+/* In case the posix attributes stored on s3 are changed */
+#define S3_POSIX_STAT_VERSION 1
+
 
 /* s3/libs3 configuration */
 extern S3BucketContext bucket_ctx;
@@ -144,8 +161,8 @@ int set_stats_object(const S3BucketContext *ctx, const char *key,
 int put_object(const S3BucketContext *ctx,
 	       const char *key,
 	       extstore_s3_req_cfg_t *req_cfg,
-	       const char *src_file);
-
+	       const char *src_file,
+	       const struct stat *posix_stat);
 /**
  * Download a file from S3.
  *
@@ -203,5 +220,27 @@ typedef struct extstore_s3_req_cfg_ extstore_s3_req_cfg_t;
 int should_retry(S3Status st, int retries, int interval);
 S3Status log_response_properties(const S3ResponseProperties *props, void *data);
 void log_response_status_error(S3Status status, const S3ErrorDetails *error);
+
+/**
+ * @brief posix2s3mds convert posix attributes to s3 metadata
+ * @param dstmds [INOUT] array of preallocated s3 object metadata "key-value
+ *        pairs", containing at least S3_POSIX_MD_COUNT elements. Name and
+ * value maximum sizes are defined in S3_POSIX_MAXNAME_LEN and
+ * S3_POSIX_MAXVALUE_LEN.
+ * @param srcstat posix stat structure to convert from
+ */
+void posix2s3mds(const S3NameValue *dstmds, const struct stat *srcstat);
+
+/**
+ * @brief s3mds2posix convert s3 metadata to posix attributes
+ * @param dststat [OUT] the posix stat structure to fill
+ * @param ver [OUT] version of the metadata attributes
+ * @param srcmds [IN] array of s3 object metadata "key-value pairs"
+ * @param nmds [IN] number of elements in srcmds
+ * @return true if every required attributes has been found and parsed, false
+ * otherwise.
+ */
+bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int nmds);
+
 
 #endif

@@ -99,6 +99,10 @@ int rino_close(kvsns_ino_t ino);
 int wino_close(kvsns_ino_t ino);
 void rino_mru_remove (void *item, void *data);
 
+int fill_stats(struct stat *stat, kvsns_ino_t ino,
+	       kvsns_cred_t *cred, time_t mtime,
+	       int isdir, size_t size);
+
 /* inode cache data structures */
 extern char ino_cache_dir[MAXPATHLEN];
 extern GTree *wino_cache;
