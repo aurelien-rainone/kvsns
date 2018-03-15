@@ -533,59 +533,6 @@ int extstore_close(kvsns_ino_t ino)
 	return 0;
 }
 
-int fill_stats(struct stat *stat, kvsns_ino_t ino,
-	       kvsns_cred_t *cred, time_t mtime,
-	       int isdir, size_t size)
-{
-#define DEFAULT_DIRMODE 0755
-#define DEFAULT_FILEMODE 0644
-#define OPENBAR_DIRMODE 0777
-#define OPENBAR_FILEMODE 0666
-
-	int mode;
-	struct timeval t;
-	const bool openbar = true;
-
-	if (!stat || !cred)
-		return -EINVAL;
-
-	memset(stat, 0, sizeof(struct stat));
-
-	stat->st_uid = cred->uid;
-	stat->st_gid = cred->gid;
-	stat->st_ino = ino;
-
-	if (mtime) {
-		/* time_t only hold seconds */
-		stat->st_mtim.tv_sec = mtime;
-		stat->st_mtim.tv_nsec = 0;
-	} else {
-		if (gettimeofday(&t, NULL) != 0)
-			return -errno;
-		stat->st_mtim.tv_sec = t.tv_sec;
-		stat->st_mtim.tv_nsec = 1000 * t.tv_usec;
-	}
-
-	stat->st_atim.tv_sec = stat->st_mtim.tv_sec;
-	stat->st_atim.tv_nsec = stat->st_mtim.tv_nsec;
-
-	stat->st_ctim.tv_sec = stat->st_mtim.tv_sec;
-	stat->st_ctim.tv_nsec = stat->st_mtim.tv_nsec;
-
-	if (isdir) {
-		mode = openbar? OPENBAR_DIRMODE: DEFAULT_DIRMODE;
-		stat->st_mode = S_IFDIR|mode;
-		stat->st_nlink = 2;
-		stat->st_size = 0;
-	} else {
-		mode = openbar? OPENBAR_FILEMODE: DEFAULT_FILEMODE;
-		stat->st_mode = S_IFREG|mode;
-		stat->st_nlink = 1;
-		stat->st_size = size;
-	}
-	return 0;
-}
-
 int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
 		     off_t offset, kvsns_dentry_t *dirent,
 		     int *size)
