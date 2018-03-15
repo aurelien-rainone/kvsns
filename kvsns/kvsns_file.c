@@ -165,7 +165,7 @@ int kvsns_openat(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 	if (!cred || !parent || !name || !fd)
 		return -EINVAL;
 
-	RC_WRAP(kvsns_lookup, cred, parent, name, &ino);
+	RC_WRAP(kvsns_lookup, cred, parent, name, &ino, NULL);
 
 	return kvsns_open(cred, &ino, flags, mode, fd);
 }
@@ -339,7 +339,7 @@ int kvsns_create_entry(kvsns_cred_t *cred, kvsns_ino_t *parent,
 	if ((type == KVSNS_SYMLINK) && (lnk == NULL))
 		return -EINVAL;
 
-	rc = kvsns_lookup(cred, parent, name, new_entry);
+	rc = kvsns_lookup(cred, parent, name, new_entry, NULL);
 	if (rc == 0)
 		return -EEXIST;
 

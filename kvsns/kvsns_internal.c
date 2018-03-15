@@ -253,7 +253,7 @@ int kvsns_lookup_path(kvsns_cred_t *cred, kvsns_ino_t *parent, char *path,
 		if (token == NULL)
 			break;
 
-		rc = kvsns_lookup(cred, iter, token, ino);
+		rc = kvsns_lookup(cred, iter, token, ino, NULL);
 		if (rc != 0) {
 			if (rc == -ENOENT)
 				break;

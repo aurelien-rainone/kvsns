@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
 	}
 	printf("===> New Ino = %llu\n", ino);
 
-	rc = kvsns_lookup(&cred, &parent, "mydir", &ino);
+	rc = kvsns_lookup(&cred, &parent, "mydir", &ino, NULL);
 	if (rc != 0) {
 		fprintf(stderr, "kvsns_lookup: err=%d\n", rc);
 		exit(1);

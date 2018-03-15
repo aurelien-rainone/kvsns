@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+		rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 		if (rc != 0) {
 			printf("==> %llun not accessible = %llu : rc=%d\n",
 				current_inode, ino, rc);
@@ -242,7 +242,7 @@ int main(int argc, char *argv[])
 			current_path, prev_path);
 
 		} else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0) {
 				printf("%llu/%s not accessible = %llu: rc=%d\n",
 					current_inode, argv[1], ino, rc);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -368,7 +368,7 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		rc = kvsns_lookup(&cred, &current_inode, argv[1], &fino);
+		rc = kvsns_lookup(&cred, &current_inode, argv[1], &fino, NULL);
 		if (rc != 0) {
 			fprintf(stderr, "%s/%s does not exist\n",
 				current_path, argv[1]);
@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -417,7 +417,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -438,7 +438,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -463,7 +463,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -497,7 +497,7 @@ int main(int argc, char *argv[])
 		if (!strcmp(argv[1], "."))
 			ino = current_inode;
 		else {
-			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino);
+			rc = kvsns_lookup(&cred, &current_inode, argv[1], &ino, NULL);
 			if (rc != 0)
 				return rc;
 		}
@@ -520,7 +520,7 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		rc = kvsns_lookup(&cred, &current_inode, argv[1], &sino);
+		rc = kvsns_lookup(&cred, &current_inode, argv[1], &sino, NULL);
 		if (rc != 0) {
 			fprintf(stderr, "%s/%s does not exist\n",
 				current_path, argv[1]);
@@ -532,7 +532,7 @@ int main(int argc, char *argv[])
 			strncpy(dname, argv[2], MAXNAMLEN);
 		} else if (argc == 4) {
 			rc = kvsns_lookup(&cred, &current_inode,
-				  argv[2], &dino);
+				  argv[2], &dino, NULL);
 			if (rc != 0) {
 				fprintf(stderr, "%s/%s does not exist\n",
 					current_path, argv[1]);
@@ -575,7 +575,7 @@ int main(int argc, char *argv[])
 			sino = current_inode;
 		else {
 			rc = kvsns_lookup(&cred, &current_inode,
-					  argv[2], &sino);
+					  argv[2], &sino, NULL);
 			if (rc != 0) {
 				fprintf(stderr,
 					"%llu/%s does not exist rc=%d\n",
@@ -588,7 +588,7 @@ int main(int argc, char *argv[])
 			dino = current_inode;
 		else {
 			rc = kvsns_lookup(&cred, &current_inode,
-					  argv[4], &dino);
+					  argv[4], &dino, NULL);
 			if (rc != 0) {
 				fprintf(stderr,
 					"%llu/%s does not exist rc=%d\n",

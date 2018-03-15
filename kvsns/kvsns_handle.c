@@ -131,7 +131,7 @@ int kvsns_rmdir(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name)
 
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_WRITE);
 
-	RC_WRAP(kvsns_lookup, cred, parent, name, &ino);
+	RC_WRAP(kvsns_lookup, cred, parent, name, &ino, NULL);
 
 	RC_WRAP(kvsns_get_stat, parent, &parent_stat);
 
@@ -250,7 +250,7 @@ errout:
 }
 
 int kvsns_lookup(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
-		kvsns_ino_t *ino)
+		 kvsns_ino_t *ino, struct stat *stat)
 {
 	char k[KLEN];
 	char v[VLEN];
@@ -258,14 +258,20 @@ int kvsns_lookup(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 	if (!cred || !parent || !name || !ino)
 		return -EINVAL;
 
+	/* access check */
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_READ);
 
+	/* retrive inode */
 	snprintf(k, KLEN, "%llu.dentries.%s",
 		 *parent, name);
-
 	RC_WRAP(kvsal_get_char, k, v);
-
 	sscanf(v, "%llu", ino);
+
+	/* get stats */
+	if (stat)  {
+		snprintf(k, KLEN, "%llu.stat", *ino);
+		RC_WRAP(kvsal_get_stat, k, stat);
+	}
 
 	return 0;
 }
@@ -302,7 +308,6 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 	snprintf(k, KLEN, "%llu.stat", *ino);
 	RC_WRAP(kvsal_get_stat, k, bufstat);
 
-	RC_WRAP(kvsal_get_stat, k, bufstat);
 	if (S_ISREG(bufstat->st_mode)) {
 		/* for file, information is to be retrieved form extstore */
 		rc = extstore_getattr(ino, &data_stat);
@@ -400,7 +405,7 @@ int kvsns_link(kvsns_cred_t *cred, kvsns_ino_t *ino,
 
 	RC_WRAP(kvsns_access, cred, dino, KVSNS_ACCESS_WRITE);
 
-	rc = kvsns_lookup(cred, dino, dname, &tmpino);
+	rc = kvsns_lookup(cred, dino, dname, &tmpino, NULL);
 	if (rc == 0)
 		return -EEXIST;
 
@@ -467,10 +472,9 @@ int kvsns_unlink(kvsns_cred_t *cred, kvsns_ino_t *dir, char *name)
 
 	RC_WRAP(kvsns_access, cred, dir, KVSNS_ACCESS_WRITE);
 
-	RC_WRAP(kvsns_lookup, cred, dir, name, &ino);
+	RC_WRAP(kvsns_lookup, cred, dir, name, &ino, &ino_stat);
 
 	RC_WRAP(kvsns_get_stat, dir, &dir_stat);
-	RC_WRAP(kvsns_get_stat, &ino, &ino_stat);
 
 	snprintf(k, KLEN, "%llu.parentdir", ino);
 	RC_WRAP(kvsal_get_char, k, v);
@@ -581,7 +585,7 @@ int kvsns_rename(kvsns_cred_t *cred,  kvsns_ino_t *sino,
 
 	RC_WRAP(kvsns_access, cred, dino, KVSNS_ACCESS_WRITE);
 
-	rc = kvsns_lookup(cred, dino, dname, &ino);
+	rc = kvsns_lookup(cred, dino, dname, &ino, NULL);
 	if (rc == 0)
 		return -EEXIST;
 
@@ -589,7 +593,7 @@ int kvsns_rename(kvsns_cred_t *cred,  kvsns_ino_t *sino,
 	if (*sino != *dino)
 		RC_WRAP(kvsns_get_stat, dino, &dino_stat);
 
-	RC_WRAP(kvsns_lookup, cred, sino, sname, &ino);
+	RC_WRAP(kvsns_lookup, cred, sino, sname, &ino, NULL);
 
 	snprintf(k, KLEN, "%llu.parentdir", ino);
 	RC_WRAP(kvsal_get_char, k, v);
