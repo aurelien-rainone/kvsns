@@ -34,12 +34,15 @@
 #include "mru.h"
 
 
-int extstore_create(kvsns_ino_t object)
+int extstore_create(kvsns_cred_t *cred, kvsns_ino_t object)
 {
 	int rc;
 	int fd;
 	char s3_path[S3_MAX_KEY_SIZE];
 	char cache_path[MAXPATHLEN];
+
+	if (!cred)
+		return -EINVAL;
 
 	fullpath_from_inode(object, S3_MAX_KEY_SIZE, s3_path);
 	build_cache_path(object, cache_path, write_cache_t, MAXPATHLEN);
@@ -63,7 +66,15 @@ int extstore_create(kvsns_ino_t object)
 	if (fd < 0) {
 		rc = errno;
 		LogCrit(KVSNS_COMPONENT_EXTSTORE,
-			"Failed creating a write cache inode ino=%lu errno=%d",
+			"failed creating a write cache inode ino=%lu errno=%d",
+			object, rc);
+		return -rc;
+	}
+
+	if (fchown(fd, cred->uid, cred->gid)) {
+		rc = -errno;
+		LogCrit(KVSNS_COMPONENT_EXTSTORE,
+			"failed set uid/gid on write cache inode ino=%lu errno=%d",
 			object, rc);
 		return -rc;
 	}

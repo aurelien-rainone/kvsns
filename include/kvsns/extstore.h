@@ -46,7 +46,7 @@
 
 int extstore_init(struct collection_item *cfg_items);
 int extstore_fini();
-int extstore_create(kvsns_ino_t object);
+int extstore_create(kvsns_cred_t *cred, kvsns_ino_t object);
 int extstore_open(kvsns_ino_t ino, int flags);
 int extstore_close(kvsns_ino_t ino);
 int extstore_read(kvsns_ino_t *ino,

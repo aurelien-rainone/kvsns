@@ -102,7 +102,7 @@ int kvsns_creat(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 	RC_WRAP(kvsns_create_entry, cred, parent, name, NULL,
 				  mode, newfile, KVSNS_FILE);
 	RC_WRAP(kvsns_get_stat, newfile, &stat);
-	RC_WRAP(extstore_create, *newfile);
+	RC_WRAP(extstore_create, cred, *newfile);
 
 	return 0;
 }
