@@ -302,6 +302,7 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 	snprintf(k, KLEN, "%llu.stat", *ino);
 	RC_WRAP(kvsal_get_stat, k, bufstat);
 
+	RC_WRAP(kvsal_get_stat, k, bufstat);
 	if (S_ISREG(bufstat->st_mode)) {
 		/* for file, information is to be retrieved form extstore */
 		rc = extstore_getattr(ino, &data_stat);

@@ -584,9 +584,6 @@ int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
 	uint64_t filelen;
 	kvsns_ino_t new_entry;
 	struct stat stat;
-	struct timeval t;
-	bool has_posix_stats;
-	char s3key[S3_MAX_KEY_SIZE];
 	bool isdir;
 	int rc;
 	const int maxentries = *size;
@@ -604,59 +601,54 @@ int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
 		return rc;
 	}
 
+	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, s3_path);
+
 	for (index = 0; index < maxentries; index++) {
 
 		/* If name is NULL, that's the end of the list */
 		if (dirent[index].name[0] == '\0')
 			break;
 
-		isdir = dirent[index].stats.st_mode == KVSNS_DIR,
-		format_s3_key(s3_path, dirent[index].name,
-			      isdir, S3_MAX_KEY_SIZE, s3key);
+		isdir = dirent[index].stats.st_mode == KVSNS_DIR;
 
-		rc = get_stats_object(&bucket_ctx, s3key, &def_s3_req_cfg,
-				      &mtime, &filelen, &stat, &has_posix_stats);
+		if (isdir) {
+			/* we do not persist nothing for directories, directory
+			 * attributes are created and managed at runtime only*/
+			fill_stats(&stat, 0, cred, 0, isdir, 0);
+		} else {
+			char s3key[S3_MAX_KEY_SIZE];
+			bool has_posix_stats;
 
-		if (!isdir) {
-			if (rc)
+			format_s3_key(s3_path, dirent[index].name,
+				      isdir, S3_MAX_KEY_SIZE, s3key);
+			rc = get_stats_object(&bucket_ctx, s3key, &def_s3_req_cfg,
+					      &mtime, &filelen, &stat, &has_posix_stats);
+			if (rc) {
+				LogCrit(KVSNS_COMPONENT_EXTSTORE,
+					"couldn't get stats on s3 key=%s rc=%d",
+					s3key, rc
+					);
 				return rc;
+			}
+
 			if (has_posix_stats) {
 				/* complete posix stats */
 				stat.st_nlink = 2;
 				stat.st_size = filelen;
-				goto create_entry;
+			} else {
+				fill_stats(&stat, 0, cred, mtime, isdir, filelen);
+				rc = set_stats_object(&bucket_ctx, s3key,
+						      &def_s3_req_cfg, &stat);
+				if (rc) {
+					LogCrit(KVSNS_COMPONENT_EXTSTORE,
+						"couldn't set posix stats on s3 key=%s rc=%d",
+						s3key, rc
+						);
+					return rc;
+				}
 			}
-			fill_stats(&stat, 0, cred, mtime, isdir, filelen);
-			goto set_stats;
-		} else {
-			/* the only way to store posix attrs on a s3 directory
-			 * is to create a key that ends with '/' and store the
-			 * attrs in its metadata */
-			if (has_posix_stats) {
-
-				/* complete posix stats */
-				stat.st_nlink = 1;
-				stat.st_size = 0;
-
-				goto create_entry;
-			}
-			if (rc != 0 && rc != -ENOENT)
-				return rc;
-
-			if (gettimeofday(&t, NULL) != 0)
-				return -errno;
-			fill_stats(&stat, 0, cred, t.tv_sec, isdir, 0);
-
-			if (rc == -ENOENT)
-				RC_WRAP(put_object, &bucket_ctx, s3key,
-					&def_s3_req_cfg, NULL);
 		}
 
-set_stats:
-		set_stats_object(&bucket_ctx, s3key,
-				 &def_s3_req_cfg, &stat);
-
-create_entry:
 		rc = kvsns_create_entry2(&ino, dirent[index].name,
 					 &new_entry, &stat);
 		if (rc == -EEXIST) {
@@ -666,6 +658,5 @@ create_entry:
 		}
 	}
 
-	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%d key=%s", ino, s3_path);
 	return 0;
 }
