@@ -246,3 +246,9 @@ The DS will be using the same configuration file as the one shown in sections V 
 5- Mount the MDS, using NFSv4.1 (pNFS is a NFSv4.1 feature, it does not exist
 over NFSv4.0 or NFSv3)
 	# mount -overs=4.1 client-21:/kvsns /mnt
+
+
+# S3 extstore/kvsal limitations
+
+- doesn't support more than 1000 entries in a directory, because of the lack of
+support of the maxKeys parameter of the ListBucket API

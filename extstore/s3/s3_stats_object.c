@@ -26,17 +26,18 @@
  */
 
 #include <stdbool.h>
+#include <strings.h>
 #include "internal.h"
 #include "s3_common.h"
 
 
-#define S3_POSIX_MODE S3_METADATA_HEADER_NAME_PREFIX "posix-mode"
-#define S3_POSIX_UID S3_METADATA_HEADER_NAME_PREFIX "posix-uid"
-#define S3_POSIX_GID S3_METADATA_HEADER_NAME_PREFIX "posix-gid"
-#define S3_POSIX_ATIM S3_METADATA_HEADER_NAME_PREFIX "posix-atim"
-#define S3_POSIX_MTIM S3_METADATA_HEADER_NAME_PREFIX "posix-mtim"
-#define S3_POSIX_CTIM S3_METADATA_HEADER_NAME_PREFIX "posix-ctim"
-#define S3_POSIX_VER S3_METADATA_HEADER_NAME_PREFIX "posix-ver"
+#define S3_POSIX_MODE "posix-mode"
+#define S3_POSIX_UID "posix-uid"
+#define S3_POSIX_GID "posix-gid"
+#define S3_POSIX_ATIM "posix-atim"
+#define S3_POSIX_MTIM "posix-mtim"
+#define S3_POSIX_CTIM "posix-ctim"
+#define S3_POSIX_VER "posix-ver"
 
 #define S3_POSIX_MD_COUNT 7
 
@@ -108,41 +109,41 @@ bool s3mds2posix(struct stat *dststat, int *ver, const S3NameValue *srcmds, int 
 		/* st_ino and st_nlink are not stored on s3, as they depend on
 		 * the client context */
 
-		if (!strcmp(name, S3_POSIX_MODE)) {
+		if (!strcasecmp(name, S3_POSIX_MODE)) {
 			dststat->st_mode = atoi(value);
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_UID)) {
+		if (!strcasecmp(name, S3_POSIX_UID)) {
 			dststat->st_uid = atoi(value);
 			nvals++;
 			continue;
 		}
 
-		if (!strcmp(name, S3_POSIX_GID)) {
+		if (!strcasecmp(name, S3_POSIX_GID)) {
 			dststat->st_gid = atoi(value);
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_ATIM)) {
+		if (!strcasecmp(name, S3_POSIX_ATIM)) {
 			dststat->st_atim.tv_sec = atoi(value);
 			dststat->st_atim.tv_nsec = 0;
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_MTIM)) {
+		if (!strcasecmp(name, S3_POSIX_MTIM)) {
 			dststat->st_mtim.tv_sec = atoi(value);
 			dststat->st_mtim.tv_nsec = 0;
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_CTIM)) {
+		if (!strcasecmp(name, S3_POSIX_CTIM)) {
 			dststat->st_ctim.tv_sec = atoi(value);
 			dststat->st_ctim.tv_nsec = 0;
 			nvals++;
 			continue;
 		}
-		if (!strcmp(name, S3_POSIX_VER)) {
+		if (!strcasecmp(name, S3_POSIX_VER)) {
 			*ver= atoi(value);
 			nvals++;
 			continue;
