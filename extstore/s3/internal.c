@@ -33,6 +33,11 @@
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <kvsns/extstore.h>
 #include "internal.h"
 #include "s3_common.h"
 #include "mru.h"
@@ -561,7 +566,7 @@ int wino_close(kvsns_ino_t ino)
 
 	/* transfer file to stable storage */
 	rc = put_object(&bucket_ctx, s3_path, &put_req_cfg, write_cache_path);
-	if (rc != 0) {
+	if (rc) {
 		LogWarn(KVSNS_COMPONENT_EXTSTORE,
 			 "Couldn't upload file ino=%d s3key=%s fd=%d",
 			 ino, s3_path, fd);
@@ -571,9 +576,11 @@ remove_fd:
 
 	g_tree_remove(wino_cache, (gpointer) ino);
 	if (remove(write_cache_path)) {
-		LogWarn(KVSNS_COMPONENT_EXTSTORE, "Couldn't remove cached inode path=%s",
-				write_cache_path);
+		LogWarn(KVSNS_COMPONENT_EXTSTORE,
+			"Couldn't remove cached inode path=%s",
+			write_cache_path);
 	}
+
 	return rc;
 }
 
