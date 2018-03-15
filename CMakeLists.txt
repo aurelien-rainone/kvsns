@@ -16,56 +16,11 @@ set(LIBKVSNS_BASE_VERSION ${LIBKVSNS_MAJOR_VERSION}.${LIBKVSNS_MINOR_VERSION}.${
 message( STATUS "cmake version ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
 message( STATUS "libkvsns version ${LIBKVSNS_BASE_VERSION}")
 
-option(USE_POSIX_STORE "Use POSIX directory as object store" OFF)
-option(USE_POSIX_OBJ "Use POSIX with objs and keys" OFF)
-option(USE_RADOS "Use Ceph/RADOS via librados" OFF)
-option(USE_S3 "Use S3 via libs3" ON)
-
-if(USE_FSAL_LUSTRE)
-    set(BCOND_LUSTRE "%bcond_without")
-else(USE_FSAL_LUSTRE)
-    set(BCOND_LUSTRE "%bcond_with")
-endif(USE_FSAL_LUSTRE)
-
 # BCOND* variables for spec file */
 set(BCOND_KVS_REDIS "%bcond_without")
-
-if (USE_POSIX_STORE)
-	set(BCOND_POSIX_STORE "%bcond_without")
-else (USE_POSIX_STORE)
-	set(BCOND_POSIX_STORE "%bcond_with")
-endif (USE_POSIX_STORE)
-
-if (USE_POSIX_OBJ)
-	set(BCOND_POSIX_OBJ "%bcond_without")
-else (USE_POSIX_OBJ)
-	set(BCOND_POSIX_OBJ "%bcond_with")
-endif (USE_POSIX_OBJ)
-
-if (USE_RADOS)
-	set(BCOND_RADOS "%bcond_without")
-else (USE_RADOS)
-	set(BCOND_RADOS "%bcond_with")
-endif (USE_RADOS)
-
-if (USE_S3)
-	set(BCOND_S3 "%bcond_without")
-else (USE_S3)
-	set(BCOND_S3 "%bcond_with")
-endif (USE_S3)
+set(BCOND_S3 "%bcond_without")
 
 # Final tuning
-if (USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
-  set(USE_POSIX_STORE OFF)
-  message(STATUS "Disabling POSIX Store")
-endif(USE_POSIX_OBJ OR USE_RADOS OR USE_S3)
-
-message(STATUS "USE_POSIX_STORE=${USE_POSIX_STORE}")
-message(STATUS "USE_POSIX_OBJ=${USE_POSIX_OBJ}")
-message(STATUS "USE_RADOS=${USE_RADOS}")
-message(STATUS "USE_S3=${USE_S3}")
-
-
 include(CheckIncludeFiles)
 include(CheckLibraryExists)
 
@@ -98,27 +53,8 @@ if((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
       message(FATAL_ERROR "Cannot find hiredis")
 endif((NOT HAVE_HIREDIS) OR (NOT HAVE_HIREDIS_H))
 
-### Check for rados ###
-if(USE_RADOS)
-check_library_exists(
-	rados
-	rados_connect
-	""
-	HAVE_LIBRADOS
-	)
-check_include_files("rados/librados.h" HAVE_RADOS_H)
-
-if((NOT HAVE_LIBRADOS) OR (NOT HAVE_RADOS_H))
-      message(FATAL_ERROR "Cannot find librados")
-endif((NOT HAVE_LIBRADOS) OR (NOT HAVE_RADOS_H))
-
-endif(USE_RADOS)
-
-
 # Build ancillary libs
-add_subdirectory(extstore)
-set(STORE_LIBRARY extstore)
-
+add_subdirectory(extstore/s3)
 add_subdirectory(kvsal/redis)
 
 add_subdirectory(kvsns)
