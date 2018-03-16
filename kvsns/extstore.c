@@ -441,8 +441,7 @@ int extstore_truncate(kvsns_ino_t *ino,
 	return 0;
 }
 
-int extstore_getattr(kvsns_ino_t *ino,
-		     struct stat *stat)
+int extstore_getattr(kvsns_ino_t *ino, struct stat *stat)
 {
 	int rc;
 	time_t mtime;
@@ -452,7 +451,6 @@ int extstore_getattr(kvsns_ino_t *ino,
 	LogDebug(KVSNS_COMPONENT_EXTSTORE, "ino=%llu", *ino);
 
 	fullpath_from_inode(*ino, S3_MAX_KEY_SIZE, s3_path);
-	ASSERT(s3_path[0] == '/');
 
 	/* check if a cached file descriptor exists for this inode, that would
 	 * mean we currently have the file content cached and opened, so its
@@ -532,4 +530,3 @@ int extstore_close(kvsns_ino_t ino)
 
 	return 0;
 }
-

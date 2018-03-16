@@ -49,28 +49,15 @@ int extstore_fini();
 int extstore_create(kvsns_cred_t *cred, kvsns_ino_t object);
 int extstore_open(kvsns_ino_t ino, int flags);
 int extstore_close(kvsns_ino_t ino);
-int extstore_read(kvsns_ino_t *ino,
-		  off_t offset,
-		  size_t buffer_size,
-		  void *buffer,
-		  bool *end_of_file,
-		  struct stat *stat);
-int extstore_write(kvsns_ino_t *ino,
-		   off_t offset,
-		   size_t buffer_size,
-		   void *buffer,
-		   bool *fsal_stable,
-		   struct stat *stat);
+int extstore_read(kvsns_ino_t *ino, off_t offset, size_t buffer_size,
+		  void *buffer, bool *end_of_file, struct stat *stat);
+int extstore_write(kvsns_ino_t *ino, off_t offset, size_t buffer_size,
+		   void *buffer, bool *fsal_stable, struct stat *stat);
 int extstore_del(kvsns_ino_t *ino);
-int extstore_truncate(kvsns_ino_t *ino,
-		      off_t filesize,
-		      bool on_obj_store,
-		      struct stat *stat);
-int extstore_attach(kvsns_ino_t *ino,
-		    char *objid, int objid_len);
-int extstore_getattr(kvsns_ino_t *ino,
-		     struct stat *stat);
-int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino,
-		     off_t offset, kvsns_dentry_t *dirent,
-		     int *size);
+int extstore_truncate(kvsns_ino_t *ino, off_t filesize,
+		      bool on_obj_store, struct stat *stat);
+int extstore_attach(kvsns_ino_t *ino, char *objid, int objid_len);
+int extstore_getattr(kvsns_ino_t *ino, struct stat *stat);
+int extstore_readdir(kvsns_cred_t *cred, kvsns_ino_t ino, off_t offset,
+		     kvsns_dentry_t *dirent, int *size);
 #endif
