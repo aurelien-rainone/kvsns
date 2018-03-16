@@ -330,7 +330,7 @@ int main(int argc, char *argv[])
 				return rc;
 		}
 
-		rc = kvsns_getattr(&cred, &ino, &buffstat);
+		rc = kvsns_getattr(&cred, &ino, 1, &buffstat);
 		if (rc == 0) {
 			printf(" inode: %ld\n", buffstat.st_ino);
 			printf(" mode: %o\n", buffstat.st_mode);

@@ -439,11 +439,14 @@ int kvsns_get_root(kvsns_ino_t *ino);
  *
  * @param cred - pointer to user's credentials
  * @param ino - pointer to current inode
+ * @param force_fetch_store - if non-nul, force requesting s3 default attributes
+ *		to extstore. s3 default attrs are: size, mtime and atime.
  * @param buffstat - [OUT] points to inode's stats.
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *buffstat);
+int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
+		  int force_fetch_stable, struct stat *bufstat);
 
 /**
  * Sets attributes for a known inode.
@@ -466,8 +469,8 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *buffstat);
  *
  * @return 0 if successful, a negative "-errno" value in case of failure
  */
-int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *setstat,
-		 int statflags);
+int kvsns_setattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
+		  struct stat *setstat, int statflags);
 
 /**
  * Gets dynamic stats for the whole namespace

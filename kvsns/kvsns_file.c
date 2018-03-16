@@ -310,13 +310,13 @@ ssize_t kvsns_read(kvsns_cred_t *cred, kvsns_file_open_t *fd,
 
 int kvsns_attach(kvsns_cred_t *cred, kvsns_ino_t *parent, char *name,
 		 char *objid, int objid_len, struct stat *stat, int statflags,
-		  kvsns_ino_t *newfile)
+		 kvsns_ino_t *newfile)
 {
 	RC_WRAP(kvsns_access, cred, parent, KVSNS_ACCESS_WRITE);
 	RC_WRAP(kvsns_create_entry, cred, parent, name, NULL,
 				    stat->st_mode, newfile, KVSNS_FILE);
 	RC_WRAP(kvsns_setattr, cred, newfile, stat, statflags);
-	RC_WRAP(kvsns_getattr, cred, newfile, stat);
+	RC_WRAP(kvsns_getattr, cred, newfile, 1, stat);
 	RC_WRAP(extstore_attach, newfile, objid, objid_len);
 
 	return 0;

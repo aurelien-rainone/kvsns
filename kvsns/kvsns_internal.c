@@ -207,7 +207,7 @@ int kvsns_access(kvsns_cred_t *cred, kvsns_ino_t *ino, int flags)
 	if (!cred || !ino)
 		return -EINVAL;
 
-	RC_WRAP(kvsns_getattr, cred, ino, &stat);
+	RC_WRAP(kvsns_getattr, cred, ino, 0, &stat);
 
 	return kvsns_access_check(cred, &stat, flags);
 }
@@ -283,4 +283,5 @@ void stats2str(char *dst, size_t size, const struct stat *stat)
 		 stat->st_mtim.tv_sec, stat->st_mtim.tv_nsec,
 		 stat->st_ctim.tv_sec, stat->st_ctim.tv_nsec);
 }
+
 

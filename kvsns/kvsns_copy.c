@@ -55,7 +55,7 @@ int kvsns_cp_from(kvsns_cred_t *cred, kvsns_file_open_t *kfd,
 	struct stat stat;
 	size_t filesize;
 
-	rc = kvsns_getattr(cred, &kfd->ino, &stat);
+	rc = kvsns_getattr(cred, &kfd->ino, 1, &stat);
 	if (rc < 0)
 		return rc;
 

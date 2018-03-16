@@ -234,7 +234,7 @@ int kvsns_readdir(kvsns_cred_t *cred, kvsns_dir_t *dir, off_t offset,
 		sscanf(v, "%llu", &dirent[i].inode);
 
 		RC_WRAP_LABEL(rc, errout, kvsns_getattr, cred, &dirent[i].inode,
-			 &dirent[i].stats);
+			 1, &dirent[i].stats);
 	}
 
 	RC_WRAP_LABEL(rc, errout, kvsns_update_stat, &dir->ino, STAT_ATIME_SET);
@@ -296,7 +296,8 @@ int kvsns_lookupp(kvsns_cred_t *cred, kvsns_ino_t *dir, kvsns_ino_t *parent)
 	return 0;
 }
 
-int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
+int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino,
+		  int force_fetch_store, struct stat *bufstat)
 {
 	struct stat data_stat;
 	char k[KLEN];
@@ -308,7 +309,7 @@ int kvsns_getattr(kvsns_cred_t *cred, kvsns_ino_t *ino, struct stat *bufstat)
 	snprintf(k, KLEN, "%llu.stat", *ino);
 	RC_WRAP(kvsal_get_stat, k, bufstat);
 
-	if (S_ISREG(bufstat->st_mode)) {
+	if (force_fetch_store && S_ISREG(bufstat->st_mode)) {
 		/* for file, information is to be retrieved form extstore */
 		rc = extstore_getattr(ino, &data_stat);
 		if (rc != 0) {
