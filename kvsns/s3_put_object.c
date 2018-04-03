@@ -42,7 +42,7 @@ typedef struct upload_mgr_{
 typedef struct put_object_callback_data_ {
 	int fd;			/* file descriptor to read from */
 	uint64_t nremain;	/* remaining number of bytes to read */
-	off_t off;		/* offset where to start read at from fd */
+	off64_t off;		/* offset where to start read at from fd */
 	S3Status status;	/* request libs3 status */
 } put_object_callback_data_t;
 
@@ -56,7 +56,7 @@ static int put_object_data_cb(int bufsize, char *buffer, void *cb_data_)
 		nread = ((cb_data->nremain > (unsigned) bufsize) ?
 			(unsigned) bufsize : cb_data->nremain);
 
-		nread = pread(cb_data->fd, buffer, nread, cb_data->off);
+		nread = pread64(cb_data->fd, buffer, nread, cb_data->off);
 		if (nread < 0) {
 			int rc = -errno;
 			LogCrit(KVSNS_COMPONENT_EXTSTORE,
@@ -135,9 +135,9 @@ int multipart_put_xml_cb(int bufsize, char *buffer, void *cb_data_)
 }
 
 typedef struct thread_part_data_ {
-	off_t part_off;			/* offset of the 1st byte for the part */
-	int curpart;			/* 0-based part sequence number */
-	int part_len;			/* size of current part */
+	off64_t part_off;		/* offset of the 1st byte for the part */
+	size_t curpart;			/* 0-based part sequence number */
+	size_t part_len;		/* size of current part */
 	char **etag;			/* [OUT] etag to fill upon completion */
 	int *set_etag;			/* [OUT] has etag been allocated */
 } thread_part_data_t;
@@ -184,7 +184,7 @@ void send_part(void* cb_data_, size_t idx)
 	status = S3StatusOK;
 
 	LogDebug(KVSNS_COMPONENT_EXTSTORE,
-	         "(multipart) uploading part idx=%lu partnum=%d partsz=%d",
+	         "(multipart) uploading part idx=%lu partnum=%lu partsz=%lu",
 	         idx, idx + 1, tctx->data[idx].part_len);
 
 	int should_cancel = 0;
@@ -254,7 +254,7 @@ int put_object(const S3BucketContext *ctx,
 	       const struct stat *posix_stat)
 {
 	int rc;
-	int i;
+	size_t i;
 	int fd;
 	S3Status final_status;
 	uint64_t total_len;
@@ -275,8 +275,8 @@ int put_object(const S3BucketContext *ctx,
 		}
 
 		/* stat the file to get its length */
-		struct stat statbuf;
-		if (stat(src_file, &statbuf) == -1) {
+		struct stat64 statbuf;
+		if (stat64(src_file, &statbuf) == -1) {
 			rc = errno;
 			LogCrit(KVSNS_COMPONENT_EXTSTORE,
 				"can't stat cached file, src=%d rc=%d",
@@ -435,7 +435,7 @@ int put_object(const S3BucketContext *ctx,
 		}
 
 		LogInfo(KVSNS_COMPONENT_EXTSTORE,
-			"(multipart) initiating upload nthreads=%d nparts=%d totsz=%d key=%s",
+			"(multipart) initiating upload nthreads=%d nparts=%lu totsz=%lu key=%s",
 			req_cfg->upload_nthreads, nparts, total_len, key);
 
 		/* setup a thread pool with `nmaxthreads` threads */
@@ -464,7 +464,7 @@ int put_object(const S3BucketContext *ctx,
 			tctx.data[i].part_len = ((remaining_len > MULTIPART_CHUNK_SIZE)
 						? MULTIPART_CHUNK_SIZE : remaining_len);
 			tctx.data[i].etag = &(manager.etags[i]);
-			tctx.data[i].part_off = i * MULTIPART_CHUNK_SIZE;
+			tctx.data[i].part_off = (off64_t)(i * ((size_t)MULTIPART_CHUNK_SIZE));
 			remaining_len -= MULTIPART_CHUNK_SIZE;
 		}
 		pthreadpool_compute_1d(thpool, send_part, &tctx, nparts);
@@ -476,7 +476,7 @@ int put_object(const S3BucketContext *ctx,
 		manager.commitstr = g_string_new("<CompleteMultipartUpload>");
 		for (i = 0; i < nparts; ++i) {
 			g_string_append_printf(manager.commitstr,
-					       "<Part><PartNumber>%d</PartNumber>"
+					       "<Part><PartNumber>%lu</PartNumber>"
 					       "<ETag>%s</ETag></Part>",
 					       i + 1, manager.etags[i]);
 		}
